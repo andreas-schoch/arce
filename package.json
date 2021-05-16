@@ -1,0 +1,49 @@
+{
+  "name": "arce",
+  "version": "0.0.1",
+  "description": "Arbitrary Remote Code Executor for automated e2e testing purposes.",
+  "main": "dist/arce-client.js",
+  "types": "dist/arce-client.d.ts",
+  "files": [
+    "dist"
+  ],
+  "nyc": {
+    "include": "src",
+    "exclude": "**/*.spec.{ts,tsx,js}"
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "build": "tsc --target es6",
+    "start": "node ./dist/arce-server.js"
+  },
+  "keywords": [
+    "inject",
+    "testing",
+    "e2e",
+    "automate",
+    "control"
+  ],
+  "author": "Andreas Schoch",
+  "license": "MIT",
+  "dependencies": {
+    "nanoid": "^3.1.23",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v19.2.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.2.18",
+    "@types/mocha": "^8.2.2",
+    "@types/node": "^15.3.0",
+    "@types/sinon-chai": "^3.2.5",
+    "@typescript-eslint/eslint-plugin": "^4.23.0",
+    "@typescript-eslint/parser": "^4.23.0",
+    "chai": "^4.3.4",
+    "eslint": "^7.26.0",
+    "mocha": "^8.4.0",
+    "nyc": "^15.1.0",
+    "sinon": "^10.0.0",
+    "sinon-chai": "^3.6.0",
+    "ts-node": "^9.1.1",
+    "typescript": "^4.2.4"
+  },
+  "repository": "github:andreas-schoch/arce"
+}

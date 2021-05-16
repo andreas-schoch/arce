@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>ARCE Example Client</title>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+
+        body {
+            display: flex;
+            flex-flow: column nowrap;
+            justify-content: center;
+        }
+
+        button {
+            border: 1px solid black;
+            border-radius: 5px;
+            outline: none;
+            margin: 2rem auto;
+            padding: 1rem 2rem;
+        }
+
+        #last-command {
+            display: block;
+            border: 1px solid black;
+            border-radius: 5px;
+            padding: 1rem;
+            margin: 0 auto;
+            max-width: 700px;
+        }
+    </style>
+</head>
+
+<body>
+
+<button onclick="openSocket()">Connect Client (Opens WS Connection)</button>
+
+<output id="last-command">
+    Here you will see the latest command the websocket server proxy sent to this client.
+</output>
+
+</body>
+
+<!--TODO compile ARCE client code so it can be used directly within the browser using <script> instead of copying it here -->
+<script>
+  function openSocket() {
+    class ARCE {
+      constructor(url) {
+        this.url = url;
+      }
+
+      startClientListener() {
+        this.socket = new WebSocket(this.url);
+        this.socket.onopen = () => console.log('socket now open');
+        this.socket.onmessage = async evt => {
+          const {id, code} = JSON.parse(evt.data);
+          document.getElementById('last-command').innerHTML =  code;
+          console.log('Received command from websocket server', id, code);
+          try {
+            const result = await new Function(code)();
+            this.socket.send(JSON.stringify({id, result}))
+          } catch (err) {
+            console.log('There was an error executing the command', err.message);
+            this.socket.send(JSON.stringify({id, result: err.message, hasError: true}));
+          }
+        }
+      }
+    }
+
+    const executor = new ARCE('ws://localhost:9001');
+    executor.startClientListener();
+  }
+</script>
+
+</html>
