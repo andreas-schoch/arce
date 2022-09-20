@@ -1,28 +1,22 @@
-import {ArceCommand, ArceResult} from "./arce-server";
+import {ArceCommand, ArceResult} from "./interfaces";
 
-// TODO combine into single ARCE class with a startServer() and a startClient() method (Check what is better for treeshaking first).
-export class ARCE {
-  url: string;
-  socket: WebSocket | undefined
+export const arceInjector = (url: string) => {
+  console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTION ENABLED!', url);
 
-  constructor(url: string) {
-    this.url = url;
-  }
-
-  startClient(): void {
-    this.socket = new WebSocket(this.url);
-
-    this.socket.onopen = () => console.log('socket now open');
-    this.socket.onmessage = (evt: MessageEvent<string>) => {
-      const {id, code}: ArceCommand = JSON.parse(evt.data);
-      console.log('Received command from websocket server', id, code);
-      try {
-        const result: unknown = new Function(code)();
-        this.socket?.send(JSON.stringify({id, result}))
-      } catch (err) {
-        console.log('There was an error executing the command', err.message);
-        this.socket?.send(JSON.stringify({id: id, result: err.message, hasError: true} as ArceResult));
-      }
+  const socket: WebSocket = new WebSocket(url);
+  socket.onopen = () => console.log('socket now open');
+  socket.onmessage = (evt: MessageEvent<string>) => {
+    const command: ArceCommand = JSON.parse(evt.data);
+    console.log('Received command from websocket server', command);
+    try {
+      const result: unknown = new Function(command.script)(); // TODO add support for async scripts
+      const arceResult: ArceResult = {awaitId: command.awaitId, result};
+      console.log('arceResult:', result);
+      socket?.send(JSON.stringify(arceResult));
+    } catch (err) {
+      console.log('There was an error executing the command', err);
+      const result: ArceResult = {awaitId: command.awaitId, result: JSON.stringify(err), hasError: true};
+      socket?.send(JSON.stringify(result));
     }
   }
 }

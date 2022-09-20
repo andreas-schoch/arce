@@ -1,9 +1,9 @@
 {
   "name": "arce",
-  "version": "0.0.1",
-  "description": "Arbitrary Remote Code Executor for automated e2e testing purposes.",
-  "main": "dist/arce-client.js",
-  "types": "dist/arce-client.d.ts",
+  "version": "0.1.0",
+  "description": "(A)rbitrary (R)emote (C)ode (E)xecutor: Tool for browser agnostic e2e testing (experimental WIP).",
+  "main": "dist/index.js",
+  "types": "dist/interfaces.d.ts",
   "files": [
     "dist"
   ],
@@ -13,8 +13,12 @@
   },
   "scripts": {
     "lint": "eslint src",
-    "build": "tsc --target es6",
-    "start": "node ./dist/arce-server.js"
+    "build": "tsc --target es6 --watch",
+    "start": "nodemon dist/index.js"
+  },
+  "config": {
+    "ssl_cert": "",
+    "ssl_key": ""
   },
   "keywords": [
     "inject",
@@ -26,24 +30,18 @@
   "author": "Andreas Schoch",
   "license": "MIT",
   "dependencies": {
-    "nanoid": "^3.1.23",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v19.2.0"
+    "dotenv": "^16.0.2",
+    "esprima": "^4.0.1",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.1.0"
   },
   "devDependencies": {
-    "@types/chai": "^4.2.18",
-    "@types/mocha": "^8.2.2",
-    "@types/node": "^15.3.0",
-    "@types/sinon-chai": "^3.2.5",
-    "@typescript-eslint/eslint-plugin": "^4.23.0",
-    "@typescript-eslint/parser": "^4.23.0",
-    "chai": "^4.3.4",
-    "eslint": "^7.26.0",
-    "mocha": "^8.4.0",
-    "nyc": "^15.1.0",
-    "sinon": "^10.0.0",
-    "sinon-chai": "^3.6.0",
-    "ts-node": "^9.1.1",
-    "typescript": "^4.2.4"
+    "@types/esprima": "^4.0.3",
+    "@types/node": "^16.11.59",
+    "@typescript-eslint/eslint-plugin": "^5.37.0",
+    "@typescript-eslint/parser": "^5.37.0",
+    "eslint": "8.22.0",
+    "nodemon": "^2.0.20",
+    "typescript": "^4.8.3"
   },
   "repository": "github:andreas-schoch/arce"
 }

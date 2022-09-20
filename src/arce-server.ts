@@ -1,111 +1,102 @@
-import * as uWS from 'uWebSockets.js';
-import {nanoid} from "nanoid";
+import {App, HttpRequest, HttpResponse, SSLApp, TemplatedApp, WebSocket} from "uWebSockets.js";
+import * as fs from "fs";
+import {parseBodyString} from "./util/parseBodyString";
+import {ArceCommand, ArceResult, ConnectedClient} from "./interfaces";
+import {waitForOpenSocket} from "./util/waitForSocket";
+import {arceInjector} from "./arce-client";
+import {randomUUID} from "crypto";
+import {hasError} from "./util/isValidJavaScript";
 
-export interface ArceCommand {
-  id?: string;
-  code: string;
-}
 
-export interface ArceResult {
-  id: string;
-  result: unknown;
-  hasError?: boolean;
-}
+export class ArceServer {
+  private connectedClient: ConnectedClient;
+  private app: TemplatedApp;
+  private sslEnabled: boolean;
 
-const sslCert = '';
-const sslKey = '';
+  constructor() {
+    this.connectedClient = {
+      socket: null,
+      pendingCommands: new Map()
+    };
 
-let socket: uWS.WebSocket | null;
-let commandResult: Promise<ArceResult>;
-let commandResolve: (value: (ArceResult | PromiseLike<ArceResult>)) => void;
-let commandReject: (value: (ArceResult | PromiseLike<ArceResult>)) => void;
+    const cert_file_name = process.env.npm_config_ssl_cert || '';
+    const key_file_name = process.env.npm_config_ssl_key || '';
+    this.sslEnabled = Boolean(cert_file_name && key_file_name && fs.existsSync(cert_file_name) && fs.existsSync(key_file_name));
+    cert_file_name && key_file_name && !this.sslEnabled && console.warn('ssl cert or key not found');
+    this.app = this.sslEnabled ? SSLApp({cert_file_name, key_file_name}) : App();
 
-// TODO refactor into CLI utility so users can do something like: npx arce start-server -p 9001 -ssl-cert 'example.crt' -ssl-key 'example.key'
-const app: uWS.TemplatedApp = (sslCert && sslKey) ? uWS.SSLApp({cert_file_name: sslCert, key_file_name: sslKey}) : uWS.App();
-
-app.ws('/*', {
-  idleTimeout: 0,
-  open: openSocketHandler,
-  close: closeSocketHandler,
-  message: messageHandler
-} as uWS.WebSocketBehavior);
-
-app.get('/*', async (res: uWS.HttpResponse, req: uWS.HttpRequest) => {
-  res.writeStatus('200 OK').end('Hello there!');
-});
-
-app.post('/command', (res: uWS.HttpResponse, req: uWS.HttpRequest) => {
-  parseBody(res, async (body: ArceCommand) => {
-    console.log('command body', body);
-    commandResult = new Promise(function (resolve, reject) {
-      commandResolve = resolve;
-      commandReject = reject;
+    this.app.ws('/*', {
+      idleTimeout: 0,
+      open: this.openSocketHandler.bind(this),
+      close: this.closeSocketHandler.bind(this),
+      message: this.messageHandler.bind(this)
     });
 
-    if (socket) {
-      socket.send(JSON.stringify({id: nanoid(8), code: body.code} as ArceCommand));
-    } else {
-      console.log('no client is currently connected');
-      res.writeStatus('404 Not Found').end('no client is currently connected');
-    }
+    this.app.get('/*', async (res: HttpResponse, req: HttpRequest) => {
+      res.writeStatus('200 OK').end('Hello there!');
+    });
+
+    this.app.get('/client', async (res: HttpResponse, req: HttpRequest) => {
+      const url = this.sslEnabled ? `wss://${req.getHeader('host')}` : `ws://${req.getHeader('host')}`;
+      const injectorIIFE = `(${arceInjector.toString()})('${url}')`;
+      res.writeHeader('Content-Type', 'application/javascript').writeStatus('200 OK').end(injectorIIFE);
+    });
+
+    this.app.post('/inject', async (res: HttpResponse, req: HttpRequest) => {
+      const script = await parseBodyString(res);
+      if (!script || hasError(script)) return res.writeStatus('400 Bad Request').end();
+      await this.commandHandler(res, script);
+    });
+  }
+
+  start() {
+    this.app.listen(12000, () => console.log(`ARCE Server running on localhost:12000`));
+  }
+
+  private async commandHandler(res: HttpResponse, script: ArceCommand['script']) {
+    const command: ArceCommand = {script, awaitId: randomUUID()};
+    this.connectedClient.pendingCommands.set(command.awaitId, command);
+    command.commandResult = new Promise((resolve, reject) => {
+      command.resolve = resolve;
+      command.reject = reject;
+    });
+
+    if (!this.connectedClient.socket) await waitForOpenSocket(this.connectedClient, 30000);
+
+    const clientCommand: ArceCommand = {script: command.script, awaitId: command.awaitId};
+    this.connectedClient.socket?.send(JSON.stringify(clientCommand));
 
     try {
-      const result: ArceResult = await commandResult;
+      const result: ArceResult = await command.commandResult;
       res.writeStatus('200 OK').writeHeader('Content-Type', 'application/json').end(JSON.stringify(result));
     } catch (e) {
       res.onAborted(() => console.error('Error occurred on the client', e));
       res.writeStatus('400 Bad Request').close(); // res.close calls onAborted
     }
-
-
-  }, () => console.error('Error occurred on this server parsing the request body'));
-});
-
-app.listen(9001, _ => console.log(`Listening to port 9001`));
-
-function openSocketHandler(ws: uWS.WebSocket): void {
-  if (!socket) {
-    console.log('Client connected');
-    socket = ws;
-  } else {
-    console.warn('Attempt to open a second WebSocket not allowed');
-    ws.close();
   }
-}
 
-function closeSocketHandler(ws: uWS.WebSocket): void {
-  if (ws === socket) {
-    console.log('Client disconnected');
-    socket = null;
-  }
-}
-
-function messageHandler(ws: uWS.WebSocket, message: ArrayBuffer) {
-  const result: ArceResult = JSON.parse(Buffer.from(message).toString());
-  console.log('websocket message received from client listener', result);
-  !result.hasError ? commandResolve(result) : commandReject(result);
-
-  // TODO implement some sort of retry mechanism on the client until server lets client know that it received the ArceResult
-  // const ok = ws.send(message, false);
-}
-
-// https://github.com/uNetworking/uWebSockets.js/blob/master/examples/JsonPost.js
-function parseBody(res: uWS.HttpResponse, successCB: (body: ArceCommand) => void, errorCB: () => void) {
-  let buffer: Buffer;
-  res.onData((ab: ArrayBuffer, isLast: boolean) => {
-    const chunk: Buffer = Buffer.from(ab);
-    if (isLast) {
-      let json;
-      try {
-        json = JSON.parse((buffer ? Buffer.concat([buffer, chunk]) : chunk).toString());
-      } catch (e) {
-        res.writeStatus('400 Bad Request').close(); // res.close calls onAborted
-        return;
-      }
-      successCB(json);
+  private openSocketHandler(ws: WebSocket): void {
+    if (!this.connectedClient.socket) {
+      console.log('Client connected');
+      this.connectedClient.socket = ws;
     } else {
-      buffer = Buffer.concat(buffer ? [buffer, chunk] : [chunk]);
+      console.warn('Attempt to open a second WebSocket not allowed');
+      ws.close();
     }
-  });
-  res.onAborted(errorCB); // register error callback
+  }
+
+  private closeSocketHandler(ws: WebSocket): void {
+    if (ws === this.connectedClient.socket) {
+      console.log('Client disconnected');
+      this.connectedClient.socket = null;
+    }
+  }
+
+  private messageHandler(ws: WebSocket, message: ArrayBuffer) {
+    const result: ArceResult = JSON.parse(Buffer.from(message).toString());
+    const pendingCommand = this.connectedClient.pendingCommands.get(result.awaitId);
+    console.log('websocket message received from client listener', JSON.stringify(result));
+    if (!pendingCommand?.resolve || !pendingCommand?.reject) return;
+    !result.hasError ? pendingCommand.resolve(result) : pendingCommand.reject(result);
+  }
 }
