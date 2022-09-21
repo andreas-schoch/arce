@@ -34,8 +34,7 @@ yarn add arce
 
 1. Start websocket server proxy:
    ```shell
-   npm run build
-   npm run start --ssl_cert=example.crt --ssl_key=example.key
+   npx arce --ssl_cert=example.crt --ssl_key=example.key
    ```
 
 1. Open Websocket to ARCE server automatically by including this script in the index.html:

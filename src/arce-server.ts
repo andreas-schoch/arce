@@ -13,14 +13,12 @@ export class ArceServer {
   private app: TemplatedApp;
   private sslEnabled: boolean;
 
-  constructor() {
+  constructor(cert_file_name: string, key_file_name: string) {
     this.connectedClient = {
       socket: null,
       pendingCommands: new Map()
     };
 
-    const cert_file_name = process.env.npm_config_ssl_cert || '';
-    const key_file_name = process.env.npm_config_ssl_key || '';
     this.sslEnabled = Boolean(cert_file_name && key_file_name && fs.existsSync(cert_file_name) && fs.existsSync(key_file_name));
     cert_file_name && key_file_name && !this.sslEnabled && console.warn('ssl cert or key not found');
     this.app = this.sslEnabled ? SSLApp({cert_file_name, key_file_name}) : App();
