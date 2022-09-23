@@ -52,24 +52,23 @@ export class ArceServer {
   }
 
   private async commandHandler(res: HttpResponse, script: ArceCommand['script']) {
-    const command: ArceCommand = {script, awaitId: randomUUID()};
-    this.connectedClient.pendingCommands.set(command.awaitId, command);
-    command.commandResult = new Promise((resolve, reject) => {
-      command.resolve = resolve;
-      command.reject = reject;
-    });
-
-    if (!this.connectedClient.socket) await waitForOpenSocket(this.connectedClient, 30000);
-
-    const clientCommand: ArceCommand = {script: command.script, awaitId: command.awaitId};
-    this.connectedClient.socket?.send(JSON.stringify(clientCommand));
-
     try {
-      const result: ArceResult = await command.commandResult;
+      const command: ArceCommand = {script, awaitId: randomUUID()};
+      this.connectedClient.pendingCommands.set(command.awaitId, command);
+      command.commandResult = new Promise((resolve, reject) => {
+        command.resolve = resolve;
+        command.reject = reject;
+      });
+
+      if (!this.connectedClient.socket) await waitForOpenSocket(this.connectedClient, 5000);
+
+      const clientCommand: ArceCommand = {script: command.script, awaitId: command.awaitId};
+      this.connectedClient.socket?.send(JSON.stringify(clientCommand));
+      const result = await command.commandResult;
       res.writeStatus('200 OK').writeHeader('Content-Type', 'application/json').end(JSON.stringify(result));
     } catch (e) {
-      res.onAborted(() => console.error('Error occurred on the client', e));
-      res.writeStatus('400 Bad Request').close(); // res.close calls onAborted
+      if (e === 'timeout') res.writeStatus('408 Request Timeout').end();
+      else res.writeStatus('500 Internal server error').end();
     }
   }
 
@@ -93,8 +92,7 @@ export class ArceServer {
   private messageHandler(ws: WebSocket, message: ArrayBuffer) {
     const result: ArceResult = JSON.parse(Buffer.from(message).toString());
     const pendingCommand = this.connectedClient.pendingCommands.get(result.awaitId);
-    console.log('websocket message received from client listener', JSON.stringify(result));
-    if (!pendingCommand?.resolve || !pendingCommand?.reject) return;
-    !result.hasError ? pendingCommand.resolve(result) : pendingCommand.reject(result);
+    console.log('websocket message received from client', result);
+    pendingCommand?.resolve && pendingCommand.resolve(result);
   }
 }
