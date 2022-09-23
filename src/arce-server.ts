@@ -5,7 +5,7 @@ import {ArceCommand, ArceResult, ConnectedClient} from "./interfaces";
 import {waitForOpenSocket} from "./util/waitForSocket";
 import {arceInjector} from "./arce-client";
 import {randomUUID} from "crypto";
-import {hasError} from "./util/isValidJavaScript";
+import {checkSyntaxErrors} from "./util/checkSyntaxErrors";
 
 
 export class ArceServer {
@@ -42,7 +42,9 @@ export class ArceServer {
 
     this.app.post('/inject', async (res: HttpResponse, req: HttpRequest) => {
       const script = await parseBodyString(res);
-      if (!script || hasError(script)) return res.writeStatus('400 Bad Request').end();
+      if (!script) return res.writeStatus('400 Bad Request').end();
+      const syntaxErrors: string = checkSyntaxErrors(script);
+      if (syntaxErrors) return res.writeStatus('400 Bad Request').end(syntaxErrors);
       await this.commandHandler(res, script);
     });
   }
