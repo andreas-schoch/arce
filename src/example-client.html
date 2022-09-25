@@ -1,43 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>ARCE Example Client</title>
-    <style>
-        * {
-            padding: 0;
-            margin: 0;
-        }
+  <title>ARCE Example Client</title>
+  <style>
+      * {
+          padding: 0;
+          margin: 0;
+      }
 
-        body {
-            display: flex;
-            flex-flow: column nowrap;
-            justify-content: center;
-        }
+      body {
+          display: flex;
+          flex-flow: column nowrap;
+          justify-content: center;
+      }
 
-        div {
-            border: 1px solid black;
-            border-radius: 5px;
-            outline: none;
-            margin: 2rem auto;
-            padding: 1rem 2rem;
-        }
+      div, ul {
+          border: 1px solid black;
+          border-radius: 5px;
+          outline: none;
+          margin: 2rem auto;
+          padding: 1rem;
+      }
 
-        pre {
-            font-family: 'consolas', 'monospace';
-            color: darkgray;
-        }
-    </style>
+      pre {
+          font-family: 'consolas', 'monospace';
+          color: darkgray;
+          padding-top: 1rem;
+      }
+
+      button {
+          width: 50%;
+          margin: 0 auto;
+          padding: 1rem 0.5rem
+      }
+
+      .hidden {
+          display: none;
+      }
+
+      ul {
+          height: 200px;
+          overflow-y: scroll;
+          padding: 1rem 0;
+      }
+
+      li {
+          padding: 0.5rem 3rem
+      }
+
+      li:nth-of-type(2n) {
+          background-color: lightblue;
+      }
+  </style>
 </head>
 
 <body>
 
 <div>This HTML file will automatically open a websocket connection due to
-    <a href="http://localhost:12000/client">http://localhost:12000/client</a> being injected.</div>
-<div>
-    <p>Make a post request to http://localhost:12000/inject with some JS code in the body.</p>
-    <pre>curl -d "console.log('hello world');return 5 * 5;" -H "Content-Type: application/javascript" -X POST "https://localhost:12000/inject"</pre>
+  <a href="http://localhost:12000/client">http://localhost:12000/client</a> being injected.
 </div>
 
+
+<button onclick="document.querySelector('ul').classList.toggle('hidden')">Toggle List</button>
+
+<ul class="hidden">
+  <li>Item 01</li>
+  <li>Item 02</li>
+  <li>Item 03</li>
+  <li>Item 04</li>
+  <li>Item 05</li>
+  <li>Item 06</li>
+  <li>Item 07</li>
+  <li>Item 08</li>
+  <li>Item 09</li>
+  <li>Item 10</li>
+  <li>Item 11</li>
+  <li>Item 12</li>
+  <li>Item 13</li>
+  <li>Item 14</li>
+  <li>Item 15</li>
+  <li>Item 16</li>
+  <li>Item 17</li>
+  <li>Item 18</li>
+  <li>Item 19</li>
+  <li>Item 20</li>
+</ul>
+
+<div>
+  <p>Make a post request to <a href="#">http://localhost:12000/command</a> (e.g. via Postman) with the following code in the body.</p>
+  <pre>
+async (waitUntil, capture, done) => {
+    setTimeout(() => document.querySelector('button').click(), 3000);
+
+    // waits for list to be visible
+    const list = await waitUntil(() => document.querySelector('ul:not(.hidden)'));
+
+    let i = 0;
+    // Scroll to random list item every 0.3s
+    const handler = setInterval(() => {
+        const randIndex = Math.floor(Math.random() * list.children.length);
+        const li = list.children[randIndex];
+        capture(li.innerText); // value to be included with the http response
+        li.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        if (++i > 10) {
+            clearInterval(handler);
+            document.body.style.backgroundColor = 'salmon';
+            done();
+        }
+    }, 300);
+};
+    </pre>
+</div>
 
 </body>
 

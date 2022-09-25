@@ -1,4 +1,4 @@
-ARCE - Arbitrary Remote Code Executor
+(A)rbitrary (R)emote (C)ode (E)xecutor
 =======================
 An experimental attempt to send arbitrary JavaScript commands to a webapp via a websocket server proxy.
 
@@ -35,9 +35,9 @@ yarn add arce
 
 2. Include this script in your index.html to automatically open websocket connection:
    ```html
-   <script src="http://localhost:12000/client"></script>
+   <script src="https://localhost:12000/client"></script>
    ```
-3. Make a POST request to https://localhost:12000/command with the following body:
+3. Send a POST request to https://localhost:12000/command with the following body:
    ```javascript
    async (waitUntil, capture, done) => {
      localStorage.setItem('example', 'example value from localStorage');
@@ -47,13 +47,13 @@ yarn add arce
      capture('hello world string literal');
      capture(location.href);
      capture(localStorage.getItem('example'));
-     done(); // response is sent once done() is called
+     done(); // http response is sent back once done() is called
    };
    ```
    Which will result in the following response:
    ```json
    {
-     "script": "async (waitUntil, capture, done) => {\r\n    localStorage.setItem('example', 'example value');\r\n    const element1 = await waitUntil(() => document.querySelector('#id1'), 5000);\r\n    const element2 = await waitUntil(() => document.querySelector('#id2'), 5000);\r\n    capture({id1: element1.innerText, id2: element2.innerText});\r\n    capture('hello world');\r\n    capture(location.href);\r\n    capture(localStorage.getItem('example'));\r\n   done();\r\n};",
+     "script": "async (waitUntil, capture, done) => {\r\n    localStorage.setItem('example', 'example value from localStorage');\r\n    const element1 = await waitUntil(() => document.querySelector('#id1'), 5000);\r\n    const element2 = await waitUntil(() => document.querySelector('#id2'), 5000);\r\n    capture({id1: element1.innerText, id2: element2.innerText});\r\n    capture('hello world string literal');\r\n    capture(location.href);\r\n    capture(localStorage.getItem('example'));\r\n   done();\r\n};",
      "awaitId": "a35339e3-14d6-48ec-bb2b-0cdc7c81f363",
      "captures": [
        {
@@ -61,7 +61,7 @@ yarn add arce
          "id2": "innerText of element with id2"
        },
        "hello world string literal",
-       "https:example.com/example",
+       "https://example.com/example",
        "example value from localStorage"
      ]
    }

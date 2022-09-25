@@ -1,6 +1,6 @@
 {
   "name": "arce",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "(A)rbitrary (R)emote (C)ode (E)xecutor: Experimental tool for browser agnostic e2e testing.",
   "main": "dist/index.js",
   "bin": "dist/index.js",
@@ -26,17 +26,16 @@
   "author": "Andreas Schoch",
   "license": "MIT",
   "dependencies": {
-    "dotenv": "^16.0.2",
     "esprima": "^4.0.1",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.1.0",
     "yargs": "^17.5.1"
   },
   "devDependencies": {
     "@types/esprima": "^4.0.3",
-    "@types/node": "^16.11.59",
-    "@types/yargs": "^17.0.12",
-    "@typescript-eslint/eslint-plugin": "^5.37.0",
-    "@typescript-eslint/parser": "^5.37.0",
+    "@types/node": "^16.11.60",
+    "@types/yargs": "^17.0.13",
+    "@typescript-eslint/eslint-plugin": "^5.38.0",
+    "@typescript-eslint/parser": "^5.38.0",
     "eslint": "8.22.0",
     "nodemon": "^2.0.20",
     "typescript": "^4.8.3"
