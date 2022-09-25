@@ -3,18 +3,24 @@ import {WebSocket} from "uWebSockets.js";
 export interface ArceCommand {
   awaitId: string;
   script: string;
-  commandResult?: Promise<ArceResult> | null;
-  resolve?: (value: (ArceResult | PromiseLike<ArceResult>)) => void;
-  reject?: (value: (ArceResult | PromiseLike<ArceResult>)) => void;
+  promise?: Promise<void>;
+  resolve?: (value: (void | PromiseLike<void>)) => void;
+  reject?: (value: (ArceClientToServerMessage | PromiseLike<ArceClientToServerMessage>)) => void;
+  captures: unknown[];
 }
 
-export interface ArceResult {
+export interface ArceClientToServerMessage {
+  type: 'capture' | 'done' | 'error';
   awaitId: string;
-  result: unknown;
-  hasError?: boolean;
+  data: unknown;
+}
+
+export interface ArceServerToClientMessage {
+  awaitId: string;
+  script: string;
 }
 
 export interface ConnectedClient {
   socket: WebSocket | null;
-  pendingCommands: Map<string, ArceCommand>
+  commands: Map<string, ArceCommand>
 }

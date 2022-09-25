@@ -1,7 +1,9 @@
-import {ArceCommand, ArceResult} from "./interfaces";
+import {ArceServerToClientMessage, ArceClientToServerMessage} from "./interfaces";
 
 export const arceInjector = (url: string) => {
-  console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTION ENABLED!', url);
+  console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTOR ENABLED!', url);
+
+  let socket: WebSocket | null = new WebSocket(url);
 
   const isPromise = (p: unknown | Promise<unknown>): p is Promise<unknown> => {
     return p !== null &&
@@ -14,26 +16,41 @@ export const arceInjector = (url: string) => {
       typeof p.catch === 'function';
   };
 
-  const send = (arceResult: ArceResult) => {
-    console.log('arceResult:', arceResult);
-    return socket?.send(JSON.stringify(arceResult));
+  const send = (message: ArceClientToServerMessage) => {
+    console.log('sending message to server', message);
+    socket?.send(JSON.stringify(message));
   };
 
-  const socket: WebSocket = new WebSocket(url);
+  // TODO deduplicate
+  const waitUntil = <T>(fn: () => T, timeout = 5000, interval = 100): Promise<T> => new Promise((res, rej) => {
+    const start = Date.now();
+    const intervalHandle = setInterval(() => {
+      const result = fn();
+      if (result) {
+        clearInterval(intervalHandle);
+        res(result);
+      } else if (Date.now() - start > timeout) {
+        clearInterval(intervalHandle);
+        rej('timeout');
+      }
+    }, interval);
+  });
+
+  socket.onclose = () => socket = null;
   socket.onopen = () => console.log('socket now open');
   socket.onmessage = (evt: MessageEvent<string>) => {
-    const command: ArceCommand = JSON.parse(evt.data);
-    console.log('Received command from websocket server', command);
+    const serverMessage: ArceServerToClientMessage = JSON.parse(evt.data);
+    const capture = (data: unknown) => send({awaitId: serverMessage.awaitId, data, type: 'capture'});
+    const done = () => setTimeout(() => send({awaitId: serverMessage.awaitId, data: null, type: 'done'}));
+
+    console.log('Received message from websocket server', serverMessage);
     try {
-      const result: unknown | Promise<unknown> = new Function(command.script)();
-      isPromise(result)
-        ? result.then((result: unknown) => send({awaitId: command.awaitId, result}))
-        : send({awaitId: command.awaitId, result})
+      const res = new Function(`return ${serverMessage.script}`)()(waitUntil, capture, done);
+      isPromise(res) ? res.catch(e => send({awaitId: serverMessage.awaitId, data: e, type: 'error'})) : res;
     } catch (error) {
-      const message: string = error instanceof Error ? error.message : JSON.stringify(error);
-      console.log('There was an error executing the command', message);
-      const arceResult: ArceResult = {awaitId: command.awaitId, result: message, hasError: true};
-      socket?.send(JSON.stringify(arceResult));
+      const errorMessage: string = error instanceof Error ? error.message : JSON.stringify(error);
+      console.log('There was an error executing the script', errorMessage);
+      send({awaitId: serverMessage.awaitId, data: errorMessage, type: 'error'});
     }
   }
 }
