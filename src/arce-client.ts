@@ -1,8 +1,7 @@
 import {ArceServerToClientMessage, ArceClientToServerMessage} from "./interfaces";
 
-export const arceInjector = (url: string) => {
+const arceInjector = (url: string) => {
   console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTOR ENABLED!', url);
-
   let socket: WebSocket | null = new WebSocket(url);
 
   const isPromise = (p: unknown | Promise<unknown>): p is Promise<unknown> => {
@@ -20,6 +19,12 @@ export const arceInjector = (url: string) => {
     console.log('sending message to server', message);
     socket?.send(JSON.stringify(message));
   };
+
+  const getErrorMessage = (e: unknown): string => {
+    if (e instanceof Error) return e.message
+    else if (typeof e === 'string') return e
+    else return JSON.stringify(e)
+  }
 
   // TODO deduplicate
   const waitUntil = <T>(fn: () => T, timeout = 5000, interval = 100): Promise<T> => new Promise((res, rej) => {
@@ -46,11 +51,13 @@ export const arceInjector = (url: string) => {
     console.log('Received message from websocket server', serverMessage);
     try {
       const res = new Function(`return ${serverMessage.script}`)()(waitUntil, capture, done);
-      isPromise(res) ? res.catch(e => send({awaitId: serverMessage.awaitId, data: e, type: 'error'})) : res;
+      isPromise(res) && res.catch(e => send({awaitId: serverMessage.awaitId, data: getErrorMessage(e), type: 'error'}));
     } catch (error) {
       const errorMessage: string = error instanceof Error ? error.message : JSON.stringify(error);
       console.log('There was an error executing the script', errorMessage);
-      send({awaitId: serverMessage.awaitId, data: errorMessage, type: 'error'});
+      send({awaitId: serverMessage.awaitId, data: getErrorMessage(error), type: 'error'});
     }
   }
 }
+
+export const getClientScript = (url: string) => `(${arceInjector.toString()})('${url}')`;

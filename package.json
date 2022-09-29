@@ -1,6 +1,6 @@
 {
   "name": "arce",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "(A)rbitrary (R)emote (C)ode (E)xecutor: Experimental tool for browser agnostic e2e testing.",
   "main": "dist/index.js",
   "bin": "dist/index.js",
@@ -9,12 +9,20 @@
   ],
   "scripts": {
     "lint": "eslint src",
-    "build": "tsc --target es6 --watch",
-    "start": "nodemon dist/index.js"
+    "build": "rimraf dist/ && tsc --target es6 && npm run copy-public",
+    "start": "nodemon dist/index.js",
+    "test": "c8 --reporter=lcov mocha --require ts-node/register --timeout 15000 'test/**/*spec.{ts,tsx}'",
+    "copy-public": "copyfiles -u 1 src/**/*.html src/**/*.css dist/"
   },
   "config": {
     "ssl_cert": "",
     "ssl_key": ""
+  },
+  "c8": {
+    "include": "src",
+    "exclude": [
+      "**/*.spec.{ts,tsx,js}"
+    ]
   },
   "keywords": [
     "inject",
@@ -31,13 +39,28 @@
     "yargs": "^17.5.1"
   },
   "devDependencies": {
+    "@types/chrome-remote-interface": "^0.31.4",
     "@types/esprima": "^4.0.3",
+    "@types/mocha": "^9.1.1",
     "@types/node": "^16.11.60",
+    "@types/sinon": "^10.0.13",
+    "@types/sinon-chai": "^3.2.8",
     "@types/yargs": "^17.0.13",
     "@typescript-eslint/eslint-plugin": "^5.38.0",
     "@typescript-eslint/parser": "^5.38.0",
+    "c8": "^7.12.0",
+    "chai": "^4.3.6",
+    "chai-http": "^4.3.0",
+    "chrome-launcher": "^0.15.1",
+    "chrome-remote-interface": "^0.31.3",
+    "copyfiles": "^2.4.1",
     "eslint": "8.22.0",
+    "mocha": "^10.0.0",
     "nodemon": "^2.0.20",
+    "rimraf": "^3.0.2",
+    "sinon": "^14.0.0",
+    "sinon-chai": "^3.7.0",
+    "ts-node": "^10.9.1",
     "typescript": "^4.8.3"
   },
   "repository": "github:andreas-schoch/arce"

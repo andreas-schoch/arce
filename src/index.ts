@@ -8,4 +8,6 @@ const argv = yargs(process.argv.slice(2)).options({
   ssl_key: {type: 'string', default: '', describe: 'ssl key'},
 }).parseSync();
 
-new ArceServer(argv.ssl_cert, argv.ssl_key).start();
+new ArceServer(argv.ssl_cert, argv.ssl_key).start().then(server => {
+  console.log(`ARCE Server running on localhost:12000, listenSocket:`, server.listenSocket);
+});

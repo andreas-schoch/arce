@@ -1,17 +1,19 @@
-import {App, HttpRequest, HttpResponse, SSLApp, TemplatedApp, WebSocket} from "uWebSockets.js";
+import {App, HttpRequest, HttpResponse, SSLApp, TemplatedApp, us_listen_socket_close, WebSocket} from "uWebSockets.js";
 import * as fs from "fs";
 import {ArceServerToClientMessage, ArceCommand, ArceClientToServerMessage, ConnectedClient} from "./interfaces";
-import {arceInjector} from "./arce-client";
+import {getClientScript} from "./arce-client";
 import {randomUUID} from "crypto";
 import {waitUntil} from "./util/waitUntil";
+import path from "path";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const esprima = require('esprima'); // TODO find better way. esprima doesn't seem to work with es6 imports
 
 
 export class ArceServer {
+  listenSocket: unknown = null;
+  readonly client: ConnectedClient;
+  readonly sslEnabled: boolean;
   private readonly app: TemplatedApp;
-  private readonly client: ConnectedClient;
-  private readonly sslEnabled: boolean;
 
   constructor(cert_file_name: string, key_file_name: string) {
     this.client = {
@@ -34,43 +36,63 @@ export class ArceServer {
       res.writeStatus('200 OK').end('Hello there!');
     });
 
+    this.app.get('/public/*', async (res: HttpResponse, req: HttpRequest) => {
+      // TODO This temporary. Allow serving of all files in public folder. Useful for prefab helper scripts which client can load lazily on demand
+      try {
+        const filepath = path.resolve(__dirname, `./public/example-client.html`);
+        const content = fs.readFileSync(filepath).toString();
+        if (this.sslEnabled) content.replace('http://localhost:12000', 'https://localhost:12000');
+        res.writeHeader('Content-Type', 'text/html').writeStatus('200 OK').end(content);
+      } catch (e) {
+        res.writeStatus('404 Not Found').end();
+      }
+    });
+
     this.app.get('/client', async (res: HttpResponse, req: HttpRequest) => {
       const url = this.sslEnabled ? `wss://${req.getHeader('host')}` : `ws://${req.getHeader('host')}`;
-      const injectorIIFE = `(${arceInjector.toString()})('${url}')`;
-      res.writeHeader('Content-Type', 'application/javascript').writeStatus('200 OK').end(injectorIIFE);
+      res.writeHeader('Content-Type', 'application/javascript').writeStatus('200 OK').end(getClientScript(url));
     });
 
     this.app.get('/command/:id', async (res: HttpResponse, req: HttpRequest) => {
       try {
-        const query = new URLSearchParams(req.getQuery());
         const command = this.client.commands.get(req.getParameter(0));
         if (!command) return res.writeStatus('404 Not Found').end();
-        const numCaptures = Number(query.get('num_captures') || 0);
-        const timeout = Number(query.get('timeout') || 5000);
-        await waitUntil(() => command.captures.length >= numCaptures, timeout);
         return res.writeHeader('Content-Type', 'application/json').writeStatus('200 OK').end(JSON.stringify(command));
       } catch (e) {
-        if (e === 'timeout') res.writeStatus('408 Request Timeout').end();
-        else res.writeStatus('500 Internal server error').end();
+        res.writeStatus('500 Internal server error').end();
       }
     });
 
     this.app.post('/command', async (res: HttpResponse, req: HttpRequest) => {
+      const query = new URLSearchParams(req.getQuery());
       const script = await this.parseBodyString(res);
-      if (!script) return res.writeStatus('400 Bad Request').end();
-      const syntaxErrors: string = this.checkSyntaxErrors(script);
-      if (syntaxErrors) return res.writeStatus('400 Bad Request').end(syntaxErrors);
-      await this.commandHandler(res, script);
+      if (!script.trim()) return res.writeStatus('400 Bad Request').end();
+      const syntaxError: string = this.checkSyntaxErrors(script);
+      if (syntaxError) return res.writeStatus('400 Bad Request').writeHeader('Content-Type', 'application/json').end(JSON.stringify({syntaxError}));
+      const timeout = Number(query.get('timeout') || 2500);
+      await this.commandHandler(res, script, timeout);
     });
   }
 
-  start() {
-    this.app.listen(12000, () => console.log(`ARCE Server running on localhost:12000`));
+  start(): Promise<ArceServer> {
+    return new Promise(res => this.app.listen(12000, (listenSocket: unknown) => {
+      this.listenSocket = listenSocket;
+      res(this);
+    }));
   }
 
-  private async commandHandler(res: HttpResponse, script: ArceCommand['script']) {
+  stop(): ArceServer {
+    if (this.listenSocket) {
+      us_listen_socket_close(this.listenSocket);
+      console.log(`ARCE Server stopped on localhost:12000, listenSocket:`, this.listenSocket);
+      this.listenSocket = null;
+    }
+    return this;
+  }
+
+  private async commandHandler(res: HttpResponse, script: ArceCommand['script'], timeout: number) {
     try {
-      if (!this.client.socket) await waitUntil(() => this.client.socket);
+      if (!this.client.socket) await waitUntil(() => this.client.socket, timeout);
       const command: ArceCommand = this.createArceCommand(script);
       const message: ArceServerToClientMessage = {script: command.script, awaitId: command.awaitId};
       this.client.socket?.send(JSON.stringify(message));
@@ -78,7 +100,7 @@ export class ArceServer {
       res.writeStatus('200 OK').writeHeader('Content-Type', 'application/json').end(JSON.stringify(command));
     } catch (e) {
       if (e === 'timeout') res.writeStatus('408 Request Timeout').end();
-      else if (e && typeof e === 'object' && 'type' in e) res.writeStatus('400 Bad Request').end(JSON.stringify(e));
+      else if (e && typeof e === 'object' && 'type' in e) res.writeStatus('400 Bad Request').writeHeader('Content-Type', 'application/json').end(JSON.stringify(e));
       else res.writeStatus('500 Internal server error').end();
     }
   }
@@ -137,7 +159,6 @@ export class ArceServer {
     try {
       esprima.parseScript(script);
     } catch (e) {
-      console.log('parseScript error', e);
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       return e.description;
