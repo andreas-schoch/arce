@@ -1,6 +1,6 @@
 {
   "name": "arce",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "(A)rbitrary (R)emote (C)ode (E)xecutor: Experimental tool for browser agnostic e2e testing.",
   "main": "dist/index.js",
   "bin": "dist/index.js",
@@ -12,6 +12,7 @@
     "build": "rimraf dist/ && tsc --target es6 && npm run copy-public",
     "start": "nodemon dist/index.js",
     "test": "c8 --reporter=lcov mocha --require ts-node/register --timeout 15000 'test/**/*spec.{ts,tsx}'",
+    "test-json-cov": "c8 --reporter=json-summary mocha --require ts-node/register --timeout 15000 'test/**/*spec.{ts,tsx}'",
     "copy-public": "copyfiles -u 1 src/**/*.html src/**/*.css dist/"
   },
   "config": {

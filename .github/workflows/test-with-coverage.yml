@@ -1,0 +1,60 @@
+name: Test with Coverage
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        node-version: [ 16.x ]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use Node.js ${{ matrix.node-version }} on ${{ matrix.os }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - run: npm ci
+
+      - name: Test the branch
+        run: npm run test-json-cov
+
+      - name: Get Coverage for badge
+        shell: python
+        run: |
+          import os
+          import json
+          
+          with open('./coverage/coverage-summary.json') as f:
+            data = json.load(f)
+            data = data.get('total')
+            f.close()
+          
+          # get overall coverage
+          parts = ['lines', 'statements', 'functions', 'branches']
+          summary = sum([data.get(p).get('pct') for p in parts]) / len(parts)
+          
+          # get badge identifier
+          gh_ref_paths = os.environ.get('GITHUB_REF').split('/')
+          branch_name = f'{gh_ref_paths[1]}_{gh_ref_paths[2]}'
+          
+          # update github env file
+          with open(os.environ.get('GITHUB_ENV'), "w") as gh_env:
+            gh_env.write(f'COVERAGE={round(summary, 2)}\n')
+            gh_env.write(f'BRANCH={branch_name}\n')
+
+      - name: Create the Badge
+        uses: schneegans/dynamic-badges-action@v1.0.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: e7afe8a31c8fde66fc11902f7aad7792  # https://gist.github.com/andreas-schoch/e7afe8a31c8fde66fc11902f7aad7792
+          filename: arce__${{ env.BRANCH }}.json
+          label: Test Coverage
+          message: ${{ env.COVERAGE }}
+          color: green
+          namedLogo: mocha

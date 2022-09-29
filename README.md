@@ -1,5 +1,10 @@
 (A)rbitrary (R)emote (C)ode (E)xecutor
 =======================
+
+[![npm version](https://badge.fury.io/js/arce.svg)](https://badge.fury.io/js/arce)
+[![GitHub license](https://img.shields.io/github/license/andreas-schoch/arce.svg)](https://github.com/andreas-schoch/arce/blob/main/LICENSE)
+![Coverage Badge](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/andreas-schoch/e7afe8a31c8fde66fc11902f7aad7792/raw/arce__heads_main.json)
+
 An experimental attempt to send arbitrary JavaScript commands to a webapp via a websocket server proxy.
 
 **Should not be used anywhere near production or for any malicious purposes!**
@@ -37,32 +42,44 @@ yarn add arce
    ```html
    <script src="https://localhost:12000/client"></script>
    ```
-3. Send a POST request to https://localhost:12000/command with the following body:
+3. Open https://localhost:12000/public/example-client.html (has the above script already included)
+4. Send a POST request to https://localhost:12000/command with the following body:
    ```javascript
    async (waitUntil, capture, done) => {
-     localStorage.setItem('example', 'example value from localStorage');
-     const element1 = await waitUntil(() => document.querySelector('#id1'), 5000);
-     const element2 = await waitUntil(() => document.querySelector('#id2'), 5000);
-     capture({id1: element1.innerText, id2: element2.innerText});
-     capture('hello world string literal');
-     capture(location.href);
-     capture(localStorage.getItem('example'));
-     done(); // http response is sent back once done() is called
+   capture({foo: 'first'});
+    setTimeout(() => document.querySelector('button').click(), 1500);
+    // waits for list to be visible
+    const list = await waitUntil(() => document.querySelector('ul:not(.hidden)'));
+    let i = 0;
+    // Scroll to random list item every 0.3s
+    const handler = setInterval(() => {
+      const randIndex = Math.floor(Math.random() * list.children.length);
+      const li = list.children[randIndex];
+      capture(li.innerText); // value to be included with the http response
+      li.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      if (++i > 10) {
+        clearInterval(handler);
+        document.body.style.backgroundColor = 'salmon';
+        capture({foo: 'last'});
+        done();
+      }
+    }, 300);
    };
    ```
    Which will result in the following response:
    ```json
    {
-     "script": "async (waitUntil, capture, done) => {\r\n    localStorage.setItem('example', 'example value from localStorage');\r\n    const element1 = await waitUntil(() => document.querySelector('#id1'), 5000);\r\n    const element2 = await waitUntil(() => document.querySelector('#id2'), 5000);\r\n    capture({id1: element1.innerText, id2: element2.innerText});\r\n    capture('hello world string literal');\r\n    capture(location.href);\r\n    capture(localStorage.getItem('example'));\r\n   done();\r\n};",
      "awaitId": "a35339e3-14d6-48ec-bb2b-0cdc7c81f363",
      "captures": [
-       {
-         "id1": "innerText of element with id1",
-         "id2": "innerText of element with id2"
-       },
-       "hello world string literal",
-       "https://example.com/example",
-       "example value from localStorage"
+       {"foo":  "first"},
+       "Item 07",
+       "Item 01",
+       "Item 05",
+       "Item 08",
+        "...",
+        "...",
+       {"bar":  "last"}
      ]
    }
    ```
