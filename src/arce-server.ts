@@ -33,7 +33,7 @@ export class ArceServer {
     });
 
     this.app.get('/*', async (res: HttpResponse, req: HttpRequest) => {
-      res.writeStatus('200 OK').end('Hello there!');
+      res.writeHeader('Content-Type', 'application/json').writeStatus('200 OK').end(JSON.stringify({hello: 'there!'}));
     });
 
     this.app.get('/public/*', async (res: HttpResponse, req: HttpRequest) => {

@@ -63,6 +63,9 @@
 
 <button onclick="document.querySelector('ul').classList.toggle('hidden')">Toggle List</button>
 
+
+<button onclick="makeDummyGetRequest()" id="fetch-something">Make Dummy GET request</button>
+
 <ul class="hidden">
   <li>Item 01</li>
   <li>Item 02</li>
@@ -77,7 +80,8 @@
 </ul>
 
 <div>
-  <p>Make a post request to <a href="#">http://localhost:12000/command</a> (e.g. via Postman) with the following code in the body.</p>
+  <p>Make a post request to <a href="#">http://localhost:12000/command</a> (e.g. via Postman) with the following code in
+    the body.</p>
   <pre>
 async (waitUntil, capture, done) => {
     setTimeout(() => document.querySelector('button').click(), 3000);
@@ -104,6 +108,13 @@ async (waitUntil, capture, done) => {
 </div>
 
 </body>
+
+<script>
+  const makeDummyGetRequest = async () => {
+    const res = await fetch('http://localhost:12000');
+    console.log('dummyGetRequest', res);
+  }
+</script>
 
 <script src="http://localhost:12000/client"></script>
 

@@ -25,7 +25,7 @@ describe(ArceServer.name, () => {
     await chrome.kill();
   });
 
-  it('should verify that ssl cert and key exist before starting server', (done) => {
+  xit('should verify that ssl cert and key exist before starting server', done => {
     const consoleWarnSpy = sinon.spy(console, 'warn');
     _startServer('404.crt', '404.key').then(() => {
       expect(server.sslEnabled).to.eq(false);
@@ -40,14 +40,14 @@ describe(ArceServer.name, () => {
     before(async () => await _startServer());
     afterEach(async () => await client.Page.navigate({url: 'http://localhost:12000'}));
 
-    it('should be able to monitor server status via GET request to root url', (done) => {
+    it('should be able to monitor server status via GET request to root url', done => {
       chai.request('http://localhost:12000').get('').end((err, res) => {
         expect(res).to.have.status(200);
         done();
       });
     });
 
-    it('should serve the client script from the server', (done) => {
+    it('should serve the client script from the server', done => {
       chai.request('http://localhost:12000').get('/client').end((err, res) => {
         expect(res).to.have.status(200);
         expect(res).to.have.header('content-type', 'application/javascript');
@@ -128,6 +128,40 @@ describe(ArceServer.name, () => {
         expect(res.body.script).to.eq(script);
         expect(socketSpy).to.have.callCount(1);
         done();
+      }))
+    });
+
+    it('should continue to capture values over time in the background after done() was called', done => {
+      const script = `\
+      async (waitUntil, capture, done) => {
+        setTimeout(() => document.querySelector('button#fetch-something').click(), 25);
+        const oldFetch = fetch;
+        fetch = async (url, options) => {
+          const res = await oldFetch(url, options);
+          const data = await res.json();
+          capture({ url: res.url, data: data, status: res.status });
+          res.json = async () => new Promise(res => res(data));
+          return res;
+        };
+        done();
+      }`;
+
+      client.Page.navigate({url: 'http://localhost:12000/public/example'})
+      .then(() => _getSocketSpy())
+      .then(socketSpy => _sendCommand(script)
+      .then(([err, {body}]) => {
+        expect(body.captures).to.have.length(0);
+        expect(socketSpy).to.have.callCount(1);
+        setTimeout(() => {
+          chai.request('http://localhost:12000').get(`/command/${body.awaitId}`).end((err, {body}) => {
+            expect(body.captures.length).to.eq(1);
+            expect(body.captures[0].url).to.eq('http://localhost:12000/');
+            expect(body.captures[0].status).to.eq(200);
+            expect(body.captures[0].data.hello).to.eq('there!');
+            expect(socketSpy).to.have.callCount(1);
+            done();
+          });
+        }, 200);
       }))
     });
 
