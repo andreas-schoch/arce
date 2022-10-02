@@ -14,18 +14,25 @@ export class ArceServer {
   readonly client: ConnectedClient;
   readonly sslEnabled: boolean;
   private readonly app: TemplatedApp;
+  private readonly port: number;
 
-  constructor(cert_file_name: string, key_file_name: string) {
+  constructor(cert_file_name = '', key_file_name = '', port = 12000) {
     this.client = {
       socket: null,
       commands: new Map(),
     };
 
-    this.sslEnabled = Boolean(cert_file_name && key_file_name && fs.existsSync(cert_file_name) && fs.existsSync(key_file_name));
+    this.port = port;
+
+    const filepathCert = path.resolve(__dirname, cert_file_name);
+    const filepathKey = path.resolve(__dirname, key_file_name);
+
+    this.sslEnabled = Boolean(cert_file_name && key_file_name && fs.existsSync(filepathCert) && fs.existsSync(filepathKey));
     cert_file_name && key_file_name && !this.sslEnabled && console.warn('ssl cert or key not found');
-    this.app = this.sslEnabled ? SSLApp({cert_file_name, key_file_name}) : App();
+    this.app = this.sslEnabled ? SSLApp({cert_file_name: filepathCert, key_file_name: filepathKey}) : App();
 
     this.app.ws('/*', {
+      maxPayloadLength: 2048 * 2048,
       idleTimeout: 0,
       open: this.openSocketHandler.bind(this),
       close: this.closeSocketHandler.bind(this),
@@ -40,8 +47,9 @@ export class ArceServer {
       // TODO This temporary. Allow serving of all files in public folder. Useful for prefab helper scripts which client can load lazily on demand
       try {
         const filepath = path.resolve(__dirname, `./public/example-client.html`);
-        const content = fs.readFileSync(filepath).toString();
-        if (this.sslEnabled) content.replace('http://localhost:12000', 'https://localhost:12000');
+        let content = fs.readFileSync(filepath).toString()
+        if (this.sslEnabled) content = content.split(`http://localhost:`).join(`https://localhost:`);
+        if (this.port !== 12000) content = content.split(`:12000`).join(`:${port}`);
         res.writeHeader('Content-Type', 'text/html').writeStatus('200 OK').end(content);
       } catch (e) {
         res.writeStatus('404 Not Found').end();
@@ -75,7 +83,8 @@ export class ArceServer {
   }
 
   start(): Promise<ArceServer> {
-    return new Promise(res => this.app.listen(12000, (listenSocket: unknown) => {
+    return new Promise(res => this.app.listen(this.port, (listenSocket: unknown) => {
+      console.log(`ARCE Server started on ${this.sslEnabled ? 'https' : 'http'}://localhost:${this.port}, listenSocket:`, listenSocket);
       this.listenSocket = listenSocket;
       res(this);
     }));
@@ -84,7 +93,7 @@ export class ArceServer {
   stop(): ArceServer {
     if (this.listenSocket) {
       us_listen_socket_close(this.listenSocket);
-      console.log(`ARCE Server stopped on localhost:12000, listenSocket:`, this.listenSocket);
+      console.log(`ARCE Server stopped on ${this.sslEnabled ? 'https' : 'http'}://localhost:${this.port}, listenSocket:`, this.listenSocket);
       this.listenSocket = null;
     }
     return this;

@@ -9,6 +9,7 @@ import {getClientScript} from "../src/arce-client";
 import sinon from 'sinon';
 import {ArceCommand} from "../src/interfaces";
 import {Response} from 'superagent';
+import {before} from "mocha";
 
 
 chai.use(sinonChai);
@@ -16,29 +17,77 @@ chai.use(chaiHttp);
 chai.should();
 
 describe(ArceServer.name, () => {
-  let server: ArceServer;
-  let client: CDP.Client;
-  let chrome: LaunchedChrome;
+  describe('HTTPS', () => {
+    let serverHttps: ArceServer;
+    let clientHttps: CDP.Client;
+    let chromeHttps: LaunchedChrome;
 
-  after(async () => {
-    server.stop();
-    await chrome.kill();
-  });
+    before(() => process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0');
 
-  xit('should verify that ssl cert and key exist before starting server', done => {
-    const consoleWarnSpy = sinon.spy(console, 'warn');
-    _startServer('404.crt', '404.key').then(() => {
-      expect(server.sslEnabled).to.eq(false);
-      expect(consoleWarnSpy).to.have.been.calledOnceWith('ssl cert or key not found');
-      done();
+    afterEach(async () => {
+      serverHttps.stop();
+      await chromeHttps.kill();
+      await clientHttps.close();
     });
-  });
 
-  // TODO test with SSL enabled
+    it('should verify that ssl cert and key exist before starting server', done => {
+      const consoleWarnSpy = sinon.spy(console, 'warn');
+      _startServerHttps('404.crt', '404.key').then(() => {
+        expect(serverHttps.sslEnabled).to.eq(false);
+        expect(consoleWarnSpy).to.have.been.calledOnceWith('ssl cert or key not found');
+        done();
+      });
+    });
+
+    it('should dynamically update example-client.html for https and custom port', done => {
+      _startServerHttps('../test/localhost.crt', '../test/localhost.key', 12001).then(() => {
+        chai.request('https://localhost:12001').get('/public/example-client.html').end((err, res) => {
+          expect(res).to.have.status(200);
+          expect(res).to.have.header('content-type', 'text/html');
+          expect(res.text.includes('fetch(\'https://localhost:12001\');')).to.be.true;
+          expect(res.text.includes('<script src="https://localhost:12001/client"></script>')).to.be.true;
+          expect(res.text.includes('http://localhost')).to.be.false;
+          expect(res.text.includes('localhost:12000')).to.be.false;
+          done();
+        });
+      });
+    });
+
+    it('should serve the client script via https', done => {
+      _startServerHttps('../test/localhost.crt', '../test/localhost.key', 12001).then(() => {
+        chai.request('https://localhost:12001').get('/client').end((err, res) => {
+          expect(res).to.have.status(200);
+          expect(res).to.have.header('content-type', 'application/javascript');
+          expect(res).to.have.header('content-length', String(getClientScript('wss://localhost:12001').length));
+          done();
+        });
+      });
+    });
+
+    const _startServerHttps = async (cert = '', key = '', port = 12000) => {
+      serverHttps && serverHttps.stop();
+      chromeHttps && await chromeHttps.kill();
+      serverHttps = await new ArceServer(cert, key, port).start();
+      chromeHttps = await launch({chromeFlags: ['--disable-gpu', '--headless']});
+      clientHttps = await CDP({port: chromeHttps.port});
+      await Promise.all([clientHttps.Network.enable({}), clientHttps.Page.enable()]);
+      await clientHttps.Page.navigate({url: `http://localhost:${port}`});
+      await clientHttps['Page.loadEventFired']();
+    };
+  });
 
   describe('HTTP', () => {
+    let server: ArceServer;
+    let client: CDP.Client;
+    let chrome: LaunchedChrome;
+
     before(async () => await _startServer());
     afterEach(async () => await client.Page.navigate({url: 'http://localhost:12000'}));
+    after(async () => {
+      server.stop();
+      await chrome.kill();
+      await client.close();
+    });
 
     it('should be able to monitor server status via GET request to root url', done => {
       chai.request('http://localhost:12000').get('').end((err, res) => {
@@ -47,7 +96,7 @@ describe(ArceServer.name, () => {
       });
     });
 
-    it('should serve the client script from the server', done => {
+    it('should serve the client script from the server from default port', done => {
       chai.request('http://localhost:12000').get('/client').end((err, res) => {
         expect(res).to.have.status(200);
         expect(res).to.have.header('content-type', 'application/javascript');
@@ -239,28 +288,28 @@ describe(ArceServer.name, () => {
         done();
       }));
     });
+
+    const _startServer = async (port = 12000) => {
+      server && server.stop();
+      chrome && await chrome.kill();
+      client && await client.close();
+      server = await new ArceServer('', '', port).start();
+      chrome = await launch({chromeFlags: ['--disable-gpu', '--headless']});
+      client = await CDP({port: chrome.port});
+      await Promise.all([client.Network.enable({}), client.Page.enable()]);
+      await client.Page.navigate({url: `http://localhost:${port}`});
+      await client['Page.loadEventFired']();
+    };
+
+    const _getSocketSpy = () => waitUntil(() => {
+      // we can only spy on the socket after it was opened in headless chrome and 'openSocketHandler' was fired on server
+      if (!server.client.socket) return;
+      return sinon.spy(server.client.socket, 'send');
+    }, 2000, 10);
   });
 
-  const _startServer = async (cert = '', key = '') => {
-    server && server.stop();
-    chrome && await chrome.kill();
-
-    server = await new ArceServer(cert, key).start();
-    chrome = await launch({chromeFlags: ['--disable-gpu', '--headless']});
-    client = await CDP({port: chrome.port});
-    await Promise.all([client.Network.enable({}), client.Page.enable()]);
-    await client.Page.navigate({url: 'http://localhost:12000'});
-    await client['Page.loadEventFired']();
-  };
-
-  const _getSocketSpy = () => waitUntil(() => {
-    // we can only spy on the socket after it was opened in headless chrome and 'openSocketHandler' was fired on server
-    if (!server.client.socket) return;
-    return sinon.spy(server.client.socket, 'send');
-  }, 2000, 10);
-
-  const _sendCommand = (script: string, timeout = 1500): Promise<[unknown, Response]> => new Promise(resolve => {
-    chai.request('http://localhost:12000')
+  const _sendCommand = (script: string, timeout = 1500, port = 12000): Promise<[unknown, Response]> => new Promise(resolve => {
+    chai.request(`http://localhost:${port}`)
     .post('/command')
     .query(timeout ? {timeout} : '')
     .type('application/javascript')
