@@ -5,9 +5,9 @@ export class ArceClient {
 
   constructor(url: string, socket: WebSocket | null = null) {
     console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTOR ENABLED!', url);
-    this.socket = socket || new WebSocket(url);
+    this.socket = socket || new WebSocket(url); // passing socket to constructor makes it easier to mock and test ArceClient behaviour
 
-    this.socket.onclose = () => socket = null;
+    this.socket.onclose = () => this.socket = null;
     this.socket.onopen = () => console.log('socket now open');
     this.socket.onmessage = (evt: MessageEvent<string>) => {
       const serverMessage: ArceServerToClientMessage = JSON.parse(evt.data);
@@ -17,21 +17,24 @@ export class ArceClient {
       console.log('Received message from websocket server', serverMessage);
       try {
         const res = new Function(`return ${serverMessage.script}`)()(this.waitUntil, capture, done);
-        this.isPromise(res) && res.catch(e => this.send({awaitId: serverMessage.awaitId, data: this.getErrorMessage(e), type: 'error'}));
-      } catch (error) {
-        const errorMessage: string = this.getErrorMessage(error);
-        console.log('There was an error executing the script', errorMessage);
-        this.send({awaitId: serverMessage.awaitId, data: errorMessage, type: 'error'});
+        this.isPromise(res) && res.catch(err => this.handleError(err, serverMessage));
+      } catch (err) {
+        this.handleError(err, serverMessage);
       }
     }
   }
 
   send(message: ArceClientToServerMessage): void {
     console.log('sending message to server', message);
-    this.socket?.send(JSON.stringify(message));
+    if (this.socket) this.socket.send(JSON.stringify(message));
   }
 
-  private isPromise(p: unknown | Promise<unknown>): p is Promise<unknown> {
+  protected handleError(err: unknown, serverMessage: ArceServerToClientMessage): void {
+    console.log('There was an error executing the script', err);
+    this.send({awaitId: serverMessage.awaitId, data: null, error: this.getErrorMessage(err), type: 'error'});
+  }
+
+  protected isPromise(p: unknown | Promise<unknown>): p is Promise<unknown> {
     return p !== null &&
       typeof p === 'object' &&
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -42,14 +45,14 @@ export class ArceClient {
       typeof p.catch === 'function';
   }
 
-  private getErrorMessage(e: unknown): string {
+  protected getErrorMessage(e: unknown): string {
     if (e instanceof Error) return e.message
     else if (typeof e === 'string') return e
     else return JSON.stringify(e)
   }
 
   // TODO deduplicate
-  private waitUntil = <T>(fn: () => T, timeout = 5000, interval = 100): Promise<T> => new Promise((res, rej) => {
+  protected waitUntil = <T>(fn: () => T, timeout = 5000, interval = 100): Promise<T> => new Promise((res, rej) => {
     const start = Date.now();
     const intervalHandle = setInterval(() => {
       const result = fn();
@@ -63,5 +66,3 @@ export class ArceClient {
     }, interval);
   })
 }
-
-export const getClientScript = (url: string) => `${ArceClient.toString()}\nnew ArceClient('${url}');`;

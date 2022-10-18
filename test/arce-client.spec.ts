@@ -85,7 +85,8 @@ describe(ArceServer.name, () => {
       const firstMessage: ArceClientToServerMessage = clientSendSpy.getCall(0).firstArg;
       expect(firstMessage.awaitId).to.eq(message.awaitId);
       expect(firstMessage.type).to.eq('error');
-      expect(firstMessage.data).to.eq('BLUB!');
+      expect(firstMessage.data).to.eq(null);
+      expect(firstMessage.error).to.eq('BLUB!');
       done();
     }, 200);
   });
@@ -96,7 +97,7 @@ describe(ArceServer.name, () => {
     const clientSendSpy = sinon.spy(client, 'send');
 
     mockSocket.triggerOnopen();
-    const script = `async (waitUntil, capture, done) => {await new Promise((res, rej) => rej('REJECTED!')); done()}`;
+    const script = `async (waitUntil, capture, done) => {await new Promise((res, rej) => rej({foo: 'REJECTED!'})); done()}`;
     const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString()};
     const evt = new MessageEvent('message', {data: JSON.stringify(message)})
     mockSocket.triggerOnmessage(evt);
@@ -106,7 +107,8 @@ describe(ArceServer.name, () => {
       const firstMessage: ArceClientToServerMessage = clientSendSpy.getCall(0).firstArg;
       expect(firstMessage.awaitId).to.eq(message.awaitId);
       expect(firstMessage.type).to.eq('error');
-      expect(firstMessage.data).to.eq('REJECTED!');
+      expect(firstMessage.data).to.eq(null);
+      expect(firstMessage.error).to.eq('{"foo":"REJECTED!"}');
       done();
     }, 200);
   });
@@ -127,7 +129,8 @@ describe(ArceServer.name, () => {
       const firstMessage: ArceClientToServerMessage = clientSendSpy.getCall(0).firstArg;
       expect(firstMessage.awaitId).to.eq(message.awaitId);
       expect(firstMessage.type).to.eq('error');
-      expect(firstMessage.data).to.eq('timeout');
+      expect(firstMessage.data).to.eq(null);
+      expect(firstMessage.error).to.eq('timeout');
       done();
     }, 200);
   });

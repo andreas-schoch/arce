@@ -1,4 +1,4 @@
-(A)rbitrary (R)emote (C)ode (E)xecutor
+ARCE: Arbitrary Remote Code Executor
 =======================
 
 [![npm version](https://badge.fury.io/js/arce.svg)](https://badge.fury.io/js/arce)
