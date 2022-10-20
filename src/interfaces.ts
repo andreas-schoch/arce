@@ -31,3 +31,5 @@ export interface ConnectedClient {
   socket: WebSocket | null;
   commands: Map<string, ArceCommand>
 }
+
+export type ScriptFn = (waitUntil: () => Promise<void>, capture: (value: unknown) => void, done: () => void, window: Window & {[key: string]: unknown}) => void | Promise<void>;

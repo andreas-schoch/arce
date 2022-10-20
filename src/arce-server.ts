@@ -1,6 +1,6 @@
 import {App, HttpResponse, SSLApp, TemplatedApp, us_listen_socket_close, WebSocket} from "uWebSockets.js";
 import * as fs from "fs";
-import {ArceServerToClientMessage, ArceCommand, ArceClientToServerMessage, ConnectedClient, ArceBaseCommand} from "./interfaces";
+import {ArceServerToClientMessage, ArceCommand, ArceClientToServerMessage, ConnectedClient, ArceBaseCommand, ScriptFn} from "./interfaces";
 import {ArceClient} from "./arce-client";
 import {randomUUID} from "crypto";
 import {waitUntil} from "./util/waitUntil";
@@ -79,12 +79,16 @@ export class ArceServer {
     this.app.post('/command', async (res, req) => {
       const query = new URLSearchParams(req.getQuery());
       const script = await this.parseBodyString(res);
-      const command = await this.execute(script, Number(query.get('timeout') || 2500));
+      const command = await this.executeString(script, Number(query.get('timeout') || 2500));
       this.jsonRes(res, command);
     });
   }
 
-  async execute(script: ArceCommand['script'], timeout = 2500): Promise<ArceCommand> {
+  async execute(scriptFn: ScriptFn, timeout = 2500): Promise<ArceCommand> {
+    return this.executeString(scriptFn.toString(), timeout);
+  }
+
+  async executeString(script: ArceCommand['script'], timeout = 2500): Promise<ArceCommand> {
     const command: ArceCommand = this.createArceCommand(script);
     if (command.error) return command; // syntax error in script
     try {

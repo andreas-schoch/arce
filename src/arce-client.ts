@@ -6,7 +6,6 @@ export class ArceClient {
   constructor(url: string, socket: WebSocket | null = null) {
     console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTOR ENABLED!', url);
     this.socket = socket || new WebSocket(url); // passing socket to constructor makes it easier to mock and test ArceClient behaviour
-
     this.socket.onclose = () => this.socket = null;
     this.socket.onopen = () => console.log('socket now open');
     this.socket.onmessage = (evt: MessageEvent<string>) => {
@@ -16,7 +15,7 @@ export class ArceClient {
 
       console.log('Received message from websocket server', serverMessage);
       try {
-        const res = new Function(`return ${serverMessage.script}`)()(this.waitUntil, capture, done);
+        const res = new Function(`return ${serverMessage.script}`)()(this.waitUntil, capture, done, typeof window !== 'undefined' ? window : {});
         this.isPromise(res) && res.catch(err => this.handleError(err, serverMessage));
       } catch (err) {
         this.handleError(err, serverMessage);

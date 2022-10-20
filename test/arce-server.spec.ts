@@ -6,7 +6,7 @@ import {ArceServer} from "../src/arce-server";
 import chaiHttp = require("chai-http");
 import {waitUntil} from "../src/util/waitUntil";
 import sinon from 'sinon';
-import {ArceCommand} from "../src/interfaces";
+import {ArceCommand, ScriptFn} from "../src/interfaces";
 import {Response} from 'superagent';
 import {before} from "mocha";
 
@@ -314,19 +314,56 @@ describe(ArceServer.name, () => {
       }));
 
       it('should be able to use server.execute() directly to trigger commands', done => {
-        const script = `(waitUntil, capture, done) => {capture('first'), capture('second'); done()}`;
+        const scriptFn: ScriptFn = (waitUntil, capture, done) => {
+          capture('first');
+          capture('second');
+          done()
+        };
         client.Page.navigate({url: 'http://localhost:12000/public/example'})
         .then(() => _getSocketSpy())
-        .then(socketSpy => server.execute(script)
+        .then(socketSpy => server.execute(scriptFn)
         .then(command => {
           expect(command.captures).to.have.length(2);
           expect(command.captures[0]).to.eq('first');
           expect(command.captures[1]).to.eq('second');
-          expect(command.script).to.eq(script);
+          expect(command.script).to.eq(scriptFn);
           expect(socketSpy).to.have.callCount(1);
           done();
         }))
       });
+    });
+
+    it('should pass window object as parameter in ScriptFn ()', done => {
+      const scriptFn: ScriptFn = (waitUntil, capture, done, global) => {
+        // Note that the window object is always accessible. For now, it is assumed that arce client will always run in a browser runtime.
+        // The reason for passing the "global" param to the ScriptFn is, mainly for better autocompletion and to avoid lint issues.
+        // Also, it clearly shows the developers intent when writing/reading these scripts.
+        // @ts-ignore
+        monkeypatched1 = 'monkeypatched1';
+        // @ts-ignore
+        window.monkeypatched2 = 'monkeypatched2';
+        global.monkeypatched3 = 'monkeypatched3';  // Note how this doesn't have to be ignored for linter
+
+        // @ts-ignore
+        capture(global === window);
+        capture(global.monkeypatched1 === 'monkeypatched1'); // Note how this doesn't have to be ignored for linter
+        // @ts-ignore
+        capture(monkeypatched2 === 'monkeypatched2');
+        // @ts-ignore
+        capture(window.monkeypatched3 === 'monkeypatched3');
+
+        done()
+      };
+      client.Page.navigate({url: 'http://localhost:12000/public/example'})
+      .then(() => _getSocketSpy())
+      .then(socketSpy => server.execute(scriptFn)
+      .then(command => {
+        expect(command.captures).to.have.length(4);
+        expect(command.captures.every(c => c)).to.eq(true);
+        expect(command.script).to.eq(scriptFn.toString());
+        expect(socketSpy).to.have.callCount(1);
+        done();
+      }))
     });
 
     const _startServer = async (port = 12000) => {
