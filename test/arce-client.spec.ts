@@ -18,8 +18,8 @@ describe(ArceServer.name, () => {
     const clientSendSpy = sinon.spy(client, 'send');
 
     mockSocket.triggerOnopen();
-    const message: ArceServerToClientMessage = {script: `(waitUntil, capture, done) => {capture('hello'); done()}`, awaitId: 'a'};
-    const evt = new MessageEvent('message', {data: JSON.stringify(message)})
+    const message: ArceServerToClientMessage = {script: `({capture, done}) => {capture('hello'); done()}`, awaitId: 'a', scriptContext: {}};
+    const evt = new MessageEvent('message', {data: JSON.stringify(message)});
     mockSocket.triggerOnmessage(evt);
     mockSocket.triggerOnclose();
 
@@ -42,13 +42,13 @@ describe(ArceServer.name, () => {
 
     mockSocket.triggerOnopen();
     const script = `\
-    async (waitUntil, capture, done) => {
+    async ({waitUntil, capture, done}) => {
       capture(await new Promise(res => setTimeout(() => res('hello'), 1)));
       capture(await waitUntil(() => 'world', 5, 1));
       done();
     }`;
-    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString()};
-    const evt = new MessageEvent('message', {data: JSON.stringify(message)})
+    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString(), scriptContext: {}};
+    const evt = new MessageEvent('message', {data: JSON.stringify(message)});
     mockSocket.triggerOnmessage(evt);
 
     setTimeout(() => {
@@ -75,9 +75,9 @@ describe(ArceServer.name, () => {
     const clientSendSpy = sinon.spy(client, 'send');
 
     mockSocket.triggerOnopen();
-    const script = `(waitUntil, capture, done) => {throw Error('BLUB!'); done()}`;
-    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString()};
-    const evt = new MessageEvent('message', {data: JSON.stringify(message)})
+    const script = `({done}) => {throw Error('BLUB!'); done()}`;
+    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString(), scriptContext: {}};
+    const evt = new MessageEvent('message', {data: JSON.stringify(message)});
     mockSocket.triggerOnmessage(evt);
 
     setTimeout(() => {
@@ -97,9 +97,9 @@ describe(ArceServer.name, () => {
     const clientSendSpy = sinon.spy(client, 'send');
 
     mockSocket.triggerOnopen();
-    const script = `async (waitUntil, capture, done) => {await new Promise((res, rej) => rej({foo: 'REJECTED!'})); done()}`;
-    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString()};
-    const evt = new MessageEvent('message', {data: JSON.stringify(message)})
+    const script = `async ({done}) => {await new Promise((res, rej) => rej({foo: 'REJECTED!'})); done()}`;
+    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString(), scriptContext: {}};
+    const evt = new MessageEvent('message', {data: JSON.stringify(message)});
     mockSocket.triggerOnmessage(evt);
 
     setTimeout(() => {
@@ -119,9 +119,9 @@ describe(ArceServer.name, () => {
     const clientSendSpy = sinon.spy(client, 'send');
 
     mockSocket.triggerOnopen();
-    const script = `async (waitUntil, capture, done) => {await waitUntil(() => false, 25, 5); done()}`;
-    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString()};
-    const evt = new MessageEvent('message', {data: JSON.stringify(message)})
+    const script = `async ({waitUntil, done}) => {await waitUntil(() => false, 25, 5); done()}`;
+    const message: ArceServerToClientMessage = {script, awaitId: Math.random().toString(), scriptContext: {}};
+    const evt = new MessageEvent('message', {data: JSON.stringify(message)});
     mockSocket.triggerOnmessage(evt);
 
     setTimeout(() => {
@@ -140,9 +140,9 @@ describe(ArceServer.name, () => {
     triggerOnopen = () => this.onopen();
     triggerOnclose = () => this.onclose();
     triggerOnmessage = (evt: MessageEvent<string>) => this.onmessage(evt);
-    private onopen = () => void 0
-    private onclose = () => void 0
-    private onmessage = (evt: MessageEvent<string>) => void 0
-    private send = (msg: string): void => void 0
+    private onopen = () => void 0;
+    private onclose = () => void 0;
+    private onmessage = (evt: MessageEvent<string>) => void 0;
+    private send = (msg: string): void => void 0;
   }
 });

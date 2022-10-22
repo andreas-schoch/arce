@@ -52,7 +52,7 @@ export class ArceServer {
       // TODO This temporary. Allow serving of all files in public folder. Useful for prefab helper scripts which client can load lazily on demand
       try {
         const filepath = path.resolve(__dirname, `./public/example-client.html`);
-        let content = fs.readFileSync(filepath).toString()
+        let content = fs.readFileSync(filepath).toString();
         if (this.sslEnabled) content = content.split(`http://localhost:`).join(`https://localhost:`);
         if (this.port !== 12000) content = content.split(`:12000`).join(`:${port}`);
         res.writeHeader('Content-Type', 'text/html').writeStatus('200 OK').end(content);
@@ -77,23 +77,24 @@ export class ArceServer {
     });
 
     this.app.post('/command', async (res, req) => {
-      const query = new URLSearchParams(req.getQuery());
+      const query: Record<string, string> = Object.fromEntries(new URLSearchParams(req.getQuery()).entries());
+      const {timeout, ...scriptContext} = query;
       const script = await this.parseBodyString(res);
-      const command = await this.executeString(script, Number(query.get('timeout') || 2500));
+      const command = await this.executeString(script, scriptContext, Number(timeout || 2500));
       this.jsonRes(res, command);
     });
   }
 
-  async execute(scriptFn: ScriptFn, timeout = 2500): Promise<ArceCommand> {
-    return this.executeString(scriptFn.toString(), timeout);
+  async execute<T>(scriptFn: ScriptFn<T>, scriptContext: ArceCommand['scriptContext'] = {}, timeout = 2500): Promise<ArceCommand> {
+    return this.executeString(scriptFn.toString(), scriptContext, timeout);
   }
 
-  async executeString(script: ArceCommand['script'], timeout = 2500): Promise<ArceCommand> {
-    const command: ArceCommand = this.createArceCommand(script);
-    if (command.error) return command; // syntax error in script
+  async executeString(script: ArceCommand['script'], scriptContext: ArceBaseCommand['scriptContext'], timeout = 2500): Promise<ArceCommand> {
+    const command: ArceCommand = this.createArceCommand(script, scriptContext);
+    if (command.error) return command; // syntax error in script or malformed scriptContext
     try {
       if (!this.client.socket) await waitUntil(() => this.client.socket, timeout);
-      const message: ArceServerToClientMessage = {script: command.script, awaitId: command.awaitId};
+      const message: ArceServerToClientMessage = {script: command.script, awaitId: command.awaitId, scriptContext: command.scriptContext};
       if (this.client.socket) this.client.socket.send(JSON.stringify(message));
       await command.promise;
       return command; // command was executed on client and signaled completion by calling done()
@@ -164,17 +165,31 @@ export class ArceServer {
     }
   }
 
-  protected createArceCommand(script: string): ArceCommand {
+  protected createArceCommand(script: ArceCommand['script'], scriptContext: ArceCommand['scriptContext']): ArceCommand {
     let resolve: ArceCommand['resolve'];
     let reject: ArceCommand['reject'];
+    let status = 102;
+    let error: string;
     const promise: ArceCommand['promise'] = new Promise((_resolve, _reject) => {
       resolve = _resolve;
       reject = _reject;
     });
-    // promise executor fn is synchronous, so resolve and reject fns are already assigned.
-    // @ts-ignore
-    const command: ArceCommand = {script, awaitId: randomUUID(), captures: [], status: 102, promise, resolve, reject};
-    this.checkScriptSyntaxErrors(command);
+
+    try {
+      esprima.parseScript(script);
+    } catch (e) {
+      // @ts-ignore
+      error = `Script has syntax error: ${e.description}`;
+      status = 400;
+    }
+
+    if (!script.trim()) {
+      status = 400;
+      error = 'Script cannot be empty.';
+    }
+
+    // @ts-ignore - promise executor fn is synchronous, so resolve and reject fns are already assigned.
+    const command: ArceCommand = {script, scriptContext, awaitId: randomUUID(), captures: [], status, error, promise, resolve, reject};
     this.client.commands.set(command.awaitId, command);
     return command;
   }
@@ -192,21 +207,6 @@ export class ArceServer {
     });
   }
 
-  protected checkScriptSyntaxErrors(command: ArceCommand): ArceCommand {
-    try {
-      esprima.parseScript(command.script);
-    } catch (e) {
-      // @ts-ignore
-      command.error = e.description;
-      command.status = 400;
-    }
-    if (!command.script.trim()) {
-      command.error = 'Script cannot be empty.';
-      command.status = 400;
-    }
-    return command;
-  }
-
   protected jsonRes(res: HttpResponse, command: ArceCommand, statusOverride?: number): void {
     const baseCommand = this.toBaseCommand(command);
     const status = statusOverride || baseCommand.status;
@@ -214,8 +214,8 @@ export class ArceServer {
     res.writeStatus(statusCodeString).writeHeader('Content-Type', 'application/json').end(JSON.stringify(baseCommand));
   }
 
-  protected toBaseCommand({status, awaitId, captures, error, script}: ArceCommand): ArceBaseCommand {
-    return {status, awaitId, captures, error, script};
+  protected toBaseCommand({status, awaitId, captures, error, script, scriptContext}: ArceCommand): ArceBaseCommand {
+    return {status, awaitId, captures, error, script, scriptContext};
   }
 
   protected isArceClientToServerErrorMessage(e: unknown): e is ArceClientToServerMessage {

@@ -80,15 +80,14 @@
 </ul>
 
 <div>
-  <p>Make a post request to <a href="#">http://localhost:12000/command</a> (e.g. via Postman) with the following code in
+  <p>Make a post request to <a href="#">http://localhost:12000/command?foo=hello&bar=world</a> (e.g. via Postman) with the following code in
     the body.</p>
   <pre>
-async (waitUntil, capture, done) => {
-    setTimeout(() => document.querySelector('button').click(), 3000);
-
+async ({ waitUntil, capture, done, global, scriptContext }) => {
+    capture(scriptContext.foo);
+    setTimeout(() => document.querySelector('button').click(), 1500);
     // waits for list to be visible
     const list = await waitUntil(() => document.querySelector('ul:not(.hidden)'));
-
     let i = 0;
     // Scroll to random list item every 0.3s
     const handler = setInterval(() => {
@@ -96,10 +95,10 @@ async (waitUntil, capture, done) => {
         const li = list.children[randIndex];
         capture(li.innerText); // value to be included with the http response
         li.scrollIntoView({ behavior: "smooth", block: "center" });
-
         if (++i > 10) {
             clearInterval(handler);
             document.body.style.backgroundColor = 'salmon';
+            capture(scriptContext.bar);
             done();
         }
     }, 300);

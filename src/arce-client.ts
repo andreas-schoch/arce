@@ -1,4 +1,5 @@
-import {ArceServerToClientMessage, ArceClientToServerMessage} from "./interfaces";
+import {ArceServerToClientMessage, ArceClientToServerMessage, ScriptFnParams, WindowExtendable} from "./interfaces";
+import {WaitUntilFn} from "./util/waitUntil";
 
 export class ArceClient {
   socket: WebSocket | null;
@@ -10,17 +11,21 @@ export class ArceClient {
     this.socket.onopen = () => console.log('socket now open');
     this.socket.onmessage = (evt: MessageEvent<string>) => {
       const serverMessage: ArceServerToClientMessage = JSON.parse(evt.data);
-      const capture = (data: unknown) => this.send({awaitId: serverMessage.awaitId, data, type: 'capture'});
-      const done = () => setTimeout(() => this.send({awaitId: serverMessage.awaitId, data: null, type: 'done'}));
-
       console.log('Received message from websocket server', serverMessage);
       try {
-        const res = new Function(`return ${serverMessage.script}`)()(this.waitUntil, capture, done, typeof window !== 'undefined' ? window : {});
+        const fnParams: ScriptFnParams = {
+          capture: (data: unknown) => this.send({awaitId: serverMessage.awaitId, data, type: 'capture'}),
+          done: () => setTimeout(() => this.send({awaitId: serverMessage.awaitId, data: null, type: 'done'})),
+          global: typeof window !== 'undefined' ? window as unknown as WindowExtendable : {} as WindowExtendable, // in case client isn't a browser
+          waitUntil: this.waitUntil,
+          scriptContext: serverMessage.scriptContext
+        };
+        const res = new Function(`return ${serverMessage.script}`)()(fnParams);
         this.isPromise(res) && res.catch(err => this.handleError(err, serverMessage));
       } catch (err) {
         this.handleError(err, serverMessage);
       }
-    }
+    };
   }
 
   send(message: ArceClientToServerMessage): void {
@@ -34,24 +39,21 @@ export class ArceClient {
   }
 
   protected isPromise(p: unknown | Promise<unknown>): p is Promise<unknown> {
-    return p !== null &&
-      typeof p === 'object' &&
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      typeof p.then === 'function' &&
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      typeof p.catch === 'function';
+    return p !== null
+      && typeof p === 'object'
+      && typeof (p as Promise<unknown>).then === 'function'
+      && typeof (p as Promise<unknown>).catch === 'function';
   }
 
   protected getErrorMessage(e: unknown): string {
-    if (e instanceof Error) return e.message
-    else if (typeof e === 'string') return e
-    else return JSON.stringify(e)
+    if (e instanceof Error) return e.message;
+    else if (typeof e === 'string') return e;
+    else return JSON.stringify(e);
   }
 
-  // TODO deduplicate
-  protected waitUntil = <T>(fn: () => T, timeout = 5000, interval = 100): Promise<T> => new Promise((res, rej) => {
+  // TODO deduplicate. Cannot import external functionality into this class as it gets stringified "as-is".
+  //  Need a way to inline imports after ts compilation or load them lazily (e.g. serve utils like waitUntil and load on client via JSONP)
+  protected waitUntil: WaitUntilFn = (fn, timeout = 5000, interval = 100) => new Promise((res, rej) => {
     const start = Date.now();
     const intervalHandle = setInterval(() => {
       const result = fn();
@@ -63,5 +65,5 @@ export class ArceClient {
         rej('timeout');
       }
     }, interval);
-  })
+  });
 }

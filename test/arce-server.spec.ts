@@ -6,7 +6,7 @@ import {ArceServer} from "../src/arce-server";
 import chaiHttp = require("chai-http");
 import {waitUntil} from "../src/util/waitUntil";
 import sinon from 'sinon';
-import {ArceCommand, ScriptFn} from "../src/interfaces";
+import {ArceCommand, ScriptContextInternal, ScriptFn} from "../src/interfaces";
 import {Response} from 'superagent';
 import {before} from "mocha";
 
@@ -107,7 +107,7 @@ describe(ArceServer.name, () => {
     });
 
     it('should time out when no client connects within 1s to receive command', done => {
-      _sendCommandViaHTTP('(waitUntil, capture, done) => {done()}', 0).then(({res}) => {
+      _sendCommandViaHTTP('({done}) => {done()}', {timeout: 0}).then(({res}) => {
         expect(res).to.have.status(408);
         expect(res.body.status).to.eq(408);
         expect(res.body.error).to.eq('No client connected in time.');
@@ -116,7 +116,7 @@ describe(ArceServer.name, () => {
     });
 
     it('should not time out if client connects shortly after command was sent', done => {
-      _sendCommandViaHTTP(`(waitUntil, capture, done) => {capture('late client'); done()}`).then(({res}) => {
+      _sendCommandViaHTTP(`({capture, done}) => {capture('late client'); done()}`).then(({res}) => {
         expect(res).to.have.status(200);
         expect(res).to.have.header('content-type', 'application/json');
         expect(res.body.captures).to.have.length(1);
@@ -127,7 +127,7 @@ describe(ArceServer.name, () => {
     });
 
     it('should capture sync values in order', done => {
-      const script = `(waitUntil, capture, done) => {capture('first'), capture('second'); done()}`;
+      const script = `({capture, done}) => {capture('first'), capture('second'); done()}`;
       client.Page.navigate({url: 'http://localhost:12000/public/example'})
       .then(() => _getSocketSpy())
       .then(socketSpy => _sendCommandViaHTTP(script)
@@ -140,12 +140,12 @@ describe(ArceServer.name, () => {
         expect(res.body.script).to.eq(script);
         expect(socketSpy).to.have.callCount(1);
         done();
-      }))
+      }));
     });
 
     it('should capture async non-primitive values in order', done => {
       const script = `\
-      async (waitUntil, capture, done) => {
+      async ({waitUntil, capture, done}) => {
         setTimeout(() => document.querySelector('button').click(), 50);
         const list = await waitUntil(() => document.querySelector('ul:not(.hidden)'));
         capture('first');
@@ -179,12 +179,12 @@ describe(ArceServer.name, () => {
         expect(res.body.script).to.eq(script);
         expect(socketSpy).to.have.callCount(1);
         done();
-      }))
+      }));
     });
 
     it('should continue to capture values over time in the background after done() was called', done => {
       const script = `\
-      async (waitUntil, capture, done) => {
+      async ({capture, done}) => {
         setTimeout(() => document.querySelector('button#fetch-something').click(), 25);
         const oldFetch = fetch;
         fetch = async (url, options) => {
@@ -213,13 +213,32 @@ describe(ArceServer.name, () => {
             done();
           });
         }, 200);
-      }))
+      }));
+    });
+
+    it('should pass additional query params to scriptContext', done => {
+      const scriptFn: ScriptFn<{ a: string, b: string, timeout: never }> = ({capture, done, scriptContext}) => {
+        capture(scriptContext.a + scriptContext.b);
+        capture(scriptContext.timeout);
+        done();
+      };
+      client.Page.navigate({url: 'http://localhost:12000/public/example'})
+      .then(() => _getSocketSpy())
+      .then(socketSpy => _sendCommandViaHTTP(scriptFn.toString(), {a: 'hello', b: ' world', timeout: 1500})
+      .then(({res}) => {
+        expect(res.body.captures).to.have.length(2);
+        expect(res.body.captures[0]).to.eq('hello world');
+        expect(res.body.captures[1]).to.eq(null); // ensuring only additional params are included that are not used by server
+        expect(res.body.script).to.eq(scriptFn.toString());
+        expect(socketSpy).to.have.callCount(1);
+        done();
+      }));
     });
 
     it('should get previous command by id', done => {
       client.Page.navigate({url: 'http://localhost:12000/public/example'})
       .then(() => _getSocketSpy())
-      .then(socketSpy => _sendCommandViaHTTP(`(waitUntil, capture, done) => {capture('hello there'); done()}`)
+      .then(socketSpy => _sendCommandViaHTTP(`({capture, done}) => {capture('hello there'); done()}`)
       .then(({res}) => {
         const command: ArceCommand = res.body;
         chai.request('http://localhost:12000').get(`/command/${command.awaitId}`).end((err, res) => {
@@ -231,13 +250,13 @@ describe(ArceServer.name, () => {
           expect(socketSpy).to.have.callCount(1);
           done();
         });
-      }))
+      }));
     });
 
     it('should get command (that raised an error) by id with correct status', done => {
       client.Page.navigate({url: 'http://localhost:12000/public/example'})
       .then(() => _getSocketSpy())
-      .then(socketSpy => _sendCommandViaHTTP(`(waitUntil, capture, done) => {capture('hello there'); throw new Error('boink'); done()}`)
+      .then(socketSpy => _sendCommandViaHTTP(`({capture, done}) => {capture('hello there'); throw new Error('boink'); done()}`)
       .then(({res}) => {
         const command: ArceCommand = res.body;
         chai.request('http://localhost:12000').get(`/command/${command.awaitId}`).end((err, res) => {
@@ -248,7 +267,7 @@ describe(ArceServer.name, () => {
           expect(socketSpy).to.have.callCount(1);
           done();
         });
-      }))
+      }));
     });
 
     it('should respond with 404 when command id not found', done => {
@@ -261,7 +280,7 @@ describe(ArceServer.name, () => {
     it('should catch client error in command script and return it', done => {
       client.Page.navigate({url: 'http://localhost:12000/public/example'})
       .then(() => _getSocketSpy())
-      .then(socketSpy => _sendCommandViaHTTP(`(waitUntil, capture, done) => {throw new Error('error message'); done();}`)
+      .then(socketSpy => _sendCommandViaHTTP(`({done}) => {throw new Error('error message'); done();}`)
       .then(({res}) => {
         expect(res).to.have.status(400);
         expect(res).to.have.header('content-type', 'application/json');
@@ -269,13 +288,13 @@ describe(ArceServer.name, () => {
         expect(res.body.error).to.eq('error message');
         expect(socketSpy).to.have.callCount(1);
         done();
-      }))
+      }));
     });
 
     it('should catch rejected promise and return error', done => {
       client.Page.navigate({url: 'http://localhost:12000/public/example'})
       .then(() => _getSocketSpy())
-      .then(socketSpy => _sendCommandViaHTTP(`async (waitUntil, capture, done) => {await new Promise((res, rej) => rej('rejected')); done();}`)
+      .then(socketSpy => _sendCommandViaHTTP(`async ({done}) => {await new Promise((res, rej) => rej('rejected')); done();}`)
       .then(({res}) => {
         expect(res).to.have.status(400);
         expect(res).to.have.header('content-type', 'application/json');
@@ -283,7 +302,7 @@ describe(ArceServer.name, () => {
         expect(res.body.error).to.eq('rejected');
         expect(socketSpy).to.have.callCount(1);
         done();
-      }))
+      }));
     });
 
     it('should catch command syntax errors before it reaches the client', done => {
@@ -295,7 +314,7 @@ describe(ArceServer.name, () => {
         expect(res).to.have.status(400);
         expect(res).to.have.header('content-type', 'application/json');
         expect(res.body.status).to.eq(400);
-        expect(res.body.error).to.eq('Unexpected token }');
+        expect(res.body.error).to.eq('Script has syntax error: Unexpected token }');
         done();
       }));
     });
@@ -314,10 +333,10 @@ describe(ArceServer.name, () => {
       }));
 
       it('should be able to use server.execute() directly to trigger commands', done => {
-        const scriptFn: ScriptFn = (waitUntil, capture, done) => {
+        const scriptFn: ScriptFn = ({capture, done}) => {
           capture('first');
           capture('second');
-          done()
+          done();
         };
         client.Page.navigate({url: 'http://localhost:12000/public/example'})
         .then(() => _getSocketSpy())
@@ -329,12 +348,12 @@ describe(ArceServer.name, () => {
           expect(command.script).to.eq(scriptFn);
           expect(socketSpy).to.have.callCount(1);
           done();
-        }))
+        }));
       });
     });
 
     it('should pass window object as parameter in ScriptFn ()', done => {
-      const scriptFn: ScriptFn = (waitUntil, capture, done, global) => {
+      const scriptFn: ScriptFn = ({capture, done, global}) => {
         // Note that the window object is always accessible. For now, it is assumed that arce client will always run in a browser runtime.
         // The reason for passing the "global" param to the ScriptFn is, mainly for better autocompletion and to avoid lint issues.
         // Also, it clearly shows the developers intent when writing/reading these scripts.
@@ -351,8 +370,7 @@ describe(ArceServer.name, () => {
         capture(monkeypatched2 === 'monkeypatched2');
         // @ts-ignore
         capture(window.monkeypatched3 === 'monkeypatched3');
-
-        done()
+        done();
       };
       client.Page.navigate({url: 'http://localhost:12000/public/example'})
       .then(() => _getSocketSpy())
@@ -363,7 +381,26 @@ describe(ArceServer.name, () => {
         expect(command.script).to.eq(scriptFn.toString());
         expect(socketSpy).to.have.callCount(1);
         done();
-      }))
+      }));
+    });
+
+    it('should pass context to script function when using execute()', done => {
+      const scriptFn: ScriptFn<{ a: number, b: number }> = ({capture, done, scriptContext}) => {
+        capture(scriptContext.a * 2);
+        capture(scriptContext.b * 2);
+        done();
+      };
+      client.Page.navigate({url: 'http://localhost:12000/public/example'})
+      .then(() => _getSocketSpy())
+      .then(socketSpy => server.execute(scriptFn, {a: 5, b: 15})
+      .then(command => {
+        expect(command.captures).to.have.length(2);
+        expect(command.captures[0]).to.eq(10);
+        expect(command.captures[1]).to.eq(30);
+        expect(command.script).to.eq(scriptFn.toString());
+        expect(socketSpy).to.have.callCount(1);
+        done();
+      }));
     });
 
     const _startServer = async (port = 12000) => {
@@ -385,12 +422,12 @@ describe(ArceServer.name, () => {
     }, 2000, 10);
   });
 
-  const _sendCommandViaHTTP = (script: string, timeout = 1500, port = 12000): Promise<{ err: unknown, res: Response }> => new Promise(resolve => {
-    chai.request(`http://localhost:${port}`)
+  const _sendCommandViaHTTP = (script: string, queryParams: ScriptContextInternal = {}): Promise<{ err: unknown, res: Response }> => new Promise(resolve => {
+    chai.request(`http://localhost:12000`)
     .post('/command')
-    .query(timeout ? {timeout} : '')
+    .query(queryParams)
     .type('application/javascript')
     .send(script)
-    .end((err, res) => resolve({err, res}))
+    .end((err, res) => resolve({err, res}));
   });
 });

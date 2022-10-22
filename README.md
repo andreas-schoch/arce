@@ -43,43 +43,45 @@ yarn add arce
    <script src="https://localhost:12000/client"></script>
    ```
 3. Open https://localhost:12000/public/example-client.html (has the above script already included)
-4. Send a POST request to https://localhost:12000/command with the following body:
+4. Send a POST request to https://localhost:12000/command?foo=hello&bar=world with the following body:
    ```javascript
-   async (waitUntil, capture, done) => {
-   capture({foo: 'first'});
-    setTimeout(() => document.querySelector('button').click(), 1500);
-    // waits for list to be visible
-    const list = await waitUntil(() => document.querySelector('ul:not(.hidden)'));
-    let i = 0;
-    // Scroll to random list item every 0.3s
-    const handler = setInterval(() => {
-      const randIndex = Math.floor(Math.random() * list.children.length);
-      const li = list.children[randIndex];
-      capture(li.innerText); // value to be included with the http response
-      li.scrollIntoView({ behavior: "smooth", block: "center" });
-
-      if (++i > 10) {
-        clearInterval(handler);
-        document.body.style.backgroundColor = 'salmon';
-        capture({foo: 'last'});
-        done();
-      }
-    }, 300);
+   async ({waitUntil, capture, done, global, scriptContext}) => {
+     capture(scriptContext.foo);
+     setTimeout(() => document.querySelector('button').click(), 1500);
+     // waits for list to be visible
+     const list = await waitUntil(() => document.querySelector('ul:not(.hidden)'));
+     let i = 0;
+     // Scroll to random list item every 0.3s
+     const handler = setInterval(() => {
+       const randIndex = Math.floor(Math.random() * list.children.length);
+       const li = list.children[randIndex];
+       capture(li.innerText); // value to be included with the http response
+       li.scrollIntoView({ behavior: "smooth", block: "center" });
+       if (++i > 10) {
+         clearInterval(handler);
+         document.body.style.backgroundColor = 'salmon';
+         capture(scriptContext.bar);
+         done();
+       }
+     }, 300);
    };
    ```
    Which will result in the following response:
    ```json
    {
+     "status": 200,
+     "script": "<The script fn (as a string) sent within body>",
      "awaitId": "a35339e3-14d6-48ec-bb2b-0cdc7c81f363",
+     "scriptContext": {"foo":  "hello", "bar":  "world"},
      "captures": [
-       {"foo":  "first"},
+       "hello",
        "Item 07",
        "Item 01",
        "Item 05",
        "Item 08",
         "...",
         "...",
-       {"bar":  "last"}
+       "world"
      ]
    }
    ```

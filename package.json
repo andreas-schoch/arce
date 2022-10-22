@@ -1,6 +1,6 @@
 {
   "name": "arce",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "(A)rbitrary (R)emote (C)ode (E)xecutor: Experimental tool for browser agnostic e2e testing.",
   "main": "dist/index.js",
   "bin": "dist/index.js",
