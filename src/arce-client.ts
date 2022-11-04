@@ -2,13 +2,17 @@ import {ArceServerToClientMessage, ArceClientToServerMessage, ScriptFnParams, Wi
 import {WaitUntilFn} from "./util/waitUntil";
 
 export class ArceClient {
-  socket: WebSocket | null;
+  socket: WebSocket | undefined;
 
-  constructor(url: string, socket: WebSocket | null = null) {
+  constructor(url: string, socket?: WebSocket) {
     console.warn('ATTENTION: (A)RBITRARY (R)EMOTE (C)ODE (E)XECUTOR ENABLED!', url);
-    this.socket = socket || new WebSocket(url); // passing socket to constructor makes it easier to mock and test ArceClient behaviour
-    this.socket.onclose = () => this.socket = null;
+    this.socket = this.openSocket(url, socket);
+  }
+
+  protected openSocket(url: string, socketOverride?: WebSocket): WebSocket {
+    this.socket = socketOverride || new WebSocket(url);
     this.socket.onopen = () => console.log('socket now open');
+    this.socket.onclose = () => setTimeout(() => this.openSocket(url, socketOverride), 3000);
     this.socket.onmessage = (evt: MessageEvent<string>) => {
       const serverMessage: ArceServerToClientMessage = JSON.parse(evt.data);
       console.log('Received message from websocket server', serverMessage);
@@ -26,6 +30,7 @@ export class ArceClient {
         this.handleError(err, serverMessage);
       }
     };
+    return this.socket;
   }
 
   send(message: ArceClientToServerMessage): void {
