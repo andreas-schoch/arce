@@ -1,23 +1,29 @@
-import {App, HttpResponse, SSLApp, TemplatedApp, us_listen_socket_close, WebSocket} from "uWebSockets.js";
 import * as fs from "fs";
 import {ArceServerToClientMessage, ArceCommand, ArceClientToServerMessage, ConnectedClient, ArceBaseCommand, ScriptFn} from "./interfaces";
 import {ArceClient} from "./arce-client";
 import {randomUUID} from "crypto";
 import {waitUntil} from "./util/waitUntil";
 import path from "path";
-import * as http from "http";
+import http from "http";
+import https from "https";
+import express, {Express} from "express";
+import {WebSocket, Server} from "ws";
+import {Response, Request} from 'express-serve-static-core';
 // TODO find better way. esprima doesn't seem to work with es6 imports
 const esprima = require('esprima');
 
 
 export class ArceServer {
-  listenSocket: unknown = null;
   readonly client: ConnectedClient;
   readonly sslEnabled: boolean;
-  protected readonly app: TemplatedApp;
+  protected readonly app: Express;
+  protected readonly server: http.Server | https.Server;
   protected readonly port: number;
 
   constructor(cert_file_name = '', key_file_name = '', port = 12000) {
+    this.app = express();
+    // this.app.use(express.json());
+    // this.app.use(express.text());
     this.client = {
       socket: null,
       commands: new Map(),
@@ -25,61 +31,69 @@ export class ArceServer {
 
     this.port = port;
 
-    const filepathCert = path.resolve(__dirname, cert_file_name);
-    const filepathKey = path.resolve(__dirname, key_file_name);
-
-    this.sslEnabled = Boolean(cert_file_name && key_file_name && fs.existsSync(filepathCert) && fs.existsSync(filepathKey));
+    const certPath = path.resolve(__dirname, cert_file_name);
+    const keyPath = path.resolve(__dirname, key_file_name);
+    this.sslEnabled = Boolean(cert_file_name && key_file_name && fs.existsSync(certPath) && fs.existsSync(keyPath));
     cert_file_name && key_file_name && !this.sslEnabled && console.warn('ssl cert or key not found');
-    this.app = this.sslEnabled ? SSLApp({cert_file_name: filepathCert, key_file_name: filepathKey}) : App();
 
-    this.app.ws('/*', {
-      maxPayloadLength: 2048 * 2048,
-      idleTimeout: 0,
-      open: this.openSocketHandler.bind(this),
-      close: this.closeSocketHandler.bind(this),
-      message: this.messageHandler.bind(this)
+    // Workaround to be able to re-use the same port for both http requests and ws messages.
+    // The http server listens to upgrade requests and delegates the relevant objects to the wsServer which then listens to messages.
+    this.server = this.sslEnabled
+      ? https.createServer({key: fs.readFileSync(keyPath, 'utf8'), cert: fs.readFileSync(certPath, 'utf8')}, this.app)
+      : http.createServer(this.app);
+    const wsServer = new Server({noServer: true});
+    wsServer.on('connection', socket => {
+      this.openSocketHandler(socket);
+      socket.on('close', this.closeSocketHandler.bind(this, socket));
+      socket.on('message', this.messageHandler.bind(this, socket));
     });
 
-    this.app.get('/*', async res => {
-      res.writeHeader('Content-Type', 'application/json').writeStatus('200 OK').end(JSON.stringify({
-        version: process.env.npm_package_version,
-        // TODO eventually allow multiple clients and identify them by some kind of id. E.g. via localhost:12000/client?id="some-id".
-        clientConnected: Boolean(this.client.socket)
-      }));
+    this.server.on('upgrade', (request, socket, head) => {
+      wsServer.handleUpgrade(request, socket, head, socket => {
+        wsServer.emit('connection', socket, request);
+      });
     });
 
-    this.app.get('/public/*', async res => {
+    this.app.get('/public*', async (req, res) => {
+      // TODO with express there is probably a better way to send a template file than with uwebsocketsjs. Adjust
       // TODO This temporary. Allow serving of all files in public folder. Useful for prefab helper scripts which client can load lazily on demand
       try {
         const filepath = path.resolve(__dirname, `./public/example-client.html`);
         let content = fs.readFileSync(filepath).toString();
         if (this.sslEnabled) content = content.split(`http://localhost:`).join(`https://localhost:`);
         if (this.port !== 12000) content = content.split(`:12000`).join(`:${port}`);
-        res.writeHeader('Content-Type', 'text/html').writeStatus('200 OK').end(content);
+        res.setHeader('Content-Type', 'text/html').status(200).end(content);
       } catch (e) {
-        res.writeStatus('404 Not Found').end();
+        res.status(404).end();
       }
     });
 
-    this.app.get('/client', async (res, req) => {
-      const url = this.sslEnabled ? `wss://${req.getHeader('host')}` : `ws://${req.getHeader('host')}`;
-      res.writeHeader('Content-Type', 'application/javascript').writeStatus('200 OK').end(this.getClientScript(url));
+    this.app.get('/client', async (req, res) => {
+      const url = `${this.sslEnabled ? 'wss' : 'ws'}://${req.hostname}:${this.port}`;
+      res.setHeader('Content-Type', 'application/javascript').status(200).end(this.getClientScript(url));
     });
 
-    this.app.get('/command/:id', async (res, req) => {
+    this.app.get('/command/:id', async (req, res) => {
       try {
-        const command = this.client.commands.get(req.getParameter(0));
-        if (!command) return res.writeStatus('404 Not Found').end();
+        const command = this.client.commands.get(req.params.id);
+        if (!command) return res.status(404).end();
         return this.jsonRes(res, command, 200);
       } catch (e) {
-        res.writeStatus('500 Internal server error').end();
+        res.status(500).end();
       }
     });
 
-    this.app.post('/command', async (res, req) => {
-      const query: Record<string, string> = Object.fromEntries(new URLSearchParams(req.getQuery()).entries());
-      const {timeout, ...scriptContext} = query;
-      const script = await this.parseBodyString(res);
+    this.app.get('/', async (req, res) => {
+      res.setHeader('Content-Type', 'application/json').status(200).end(JSON.stringify({
+        version: process.env.npm_package_version,
+        // TODO eventually allow multiple clients and identify them by some kind of id. E.g. via localhost:12000/client?id="some-id".
+        clientConnected: Boolean(this.client.socket)
+      }));
+    });
+
+    this.app.post('/command', async (req, res) => {
+      const {timeout, ...scriptContext} = req.query;
+      const script = await this.parseBodyString(req);
       const command = await this.executeString(script, scriptContext, Number(timeout || 2500));
       this.jsonRes(res, command);
     });
@@ -106,20 +120,22 @@ export class ArceServer {
   }
 
   start(): Promise<ArceServer> {
-    return new Promise(res => this.app.listen(this.port, (listenSocket: unknown) => {
-      console.log(`ARCE Server started on ${this.sslEnabled ? 'https' : 'http'}://localhost:${this.port}, listenSocket:`, listenSocket);
-      this.listenSocket = listenSocket;
+    return new Promise(res => this.server.listen(this.port, () => {
+      process.on('SIGTERM', async () => await this.stop());
+      process.on('SIGINT', async () => await this.stop());
+      console.log(`ARCE Server started on ${this.sslEnabled ? 'https' : 'http'}://localhost:${this.port}`);
       res(this);
     }));
   }
 
-  stop(): ArceServer {
-    if (this.listenSocket) {
-      us_listen_socket_close(this.listenSocket);
-      console.log(`ARCE Server stopped on ${this.sslEnabled ? 'https' : 'http'}://localhost:${this.port}, listenSocket:`, this.listenSocket);
-      this.listenSocket = null;
-    }
-    return this;
+  stop(): Promise<ArceServer> {
+    return new Promise(res => {
+      console.log('Trying to shut down and close connections gracefully.');
+      this.server.close(() => {
+        console.log('Closed all connections.');
+        res(this);
+      });
+    });
   }
 
   getClientScript(url: string) {
@@ -194,24 +210,19 @@ export class ArceServer {
     return command;
   }
 
-  protected parseBodyString(res: HttpResponse): Promise<string> {
-    return new Promise((resolve, reject) => {
-      let buffer: Buffer;
-      res.onData((ab, isLast) => {
-        const chunk = Buffer.from(ab);
-        isLast
-          ? resolve((buffer ? Buffer.concat([buffer, chunk]) : chunk).toString())
-          : buffer = Buffer.concat(buffer ? [buffer, chunk] : [chunk]);
-      });
-      res.onAborted(() => reject(null));
+  protected parseBodyString(res: Request): Promise<string> {
+    // TODO should try to use this.app.use(express.json()); or .text() but returns empty object with req.body when sending javascript in body. Why?
+    return new Promise((resolve) => {
+      let acc = '';
+      res.on('data', chunk => acc += chunk);
+      res.on('end', () => resolve(acc));
     });
   }
 
-  protected jsonRes(res: HttpResponse, command: ArceCommand, statusOverride?: number): void {
+  protected jsonRes(res: Response, command: ArceCommand, statusOverride?: number): void {
     const baseCommand = this.toBaseCommand(command);
     const status = statusOverride || baseCommand.status;
-    const statusCodeString = `${status} ${http.STATUS_CODES[status]}`;
-    res.writeStatus(statusCodeString).writeHeader('Content-Type', 'application/json').end(JSON.stringify(baseCommand));
+    res.status(status).setHeader('Content-Type', 'application/json').end(JSON.stringify(baseCommand));
   }
 
   protected toBaseCommand({status, awaitId, captures, error, script, scriptContext}: ArceCommand): ArceBaseCommand {

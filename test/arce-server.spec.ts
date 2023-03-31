@@ -24,9 +24,9 @@ describe(ArceServer.name, () => {
     before(() => process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0');
 
     afterEach(async () => {
-      serverHttps.stop();
-      await chromeHttps.kill();
-      await clientHttps.close();
+      serverHttps && await serverHttps.stop();
+      chromeHttps && await chromeHttps.kill();
+      clientHttps && await clientHttps.close();
     });
 
     it('should verify that ssl cert and key exist before starting server', done => {
@@ -64,7 +64,7 @@ describe(ArceServer.name, () => {
     });
 
     const _startServerHttps = async (cert = '', key = '', port = 12000) => {
-      serverHttps && serverHttps.stop();
+      serverHttps && await serverHttps.stop();
       chromeHttps && await chromeHttps.kill();
       serverHttps = await new ArceServer(cert, key, port).start();
       chromeHttps = await launch({chromeFlags: ['--disable-gpu', '--headless']});
@@ -83,7 +83,7 @@ describe(ArceServer.name, () => {
     before(async () => await _startServer());
     afterEach(async () => await client.Page.navigate({url: 'http://localhost:12000'}));
     after(async () => {
-      server.stop();
+      await server.stop();
       await chrome.kill();
       await client.close();
     });
@@ -404,7 +404,7 @@ describe(ArceServer.name, () => {
     });
 
     const _startServer = async (port = 12000) => {
-      server && server.stop();
+      server && await server.stop();
       chrome && await chrome.kill();
       client && await client.close();
       server = await new ArceServer('', '', port).start();
