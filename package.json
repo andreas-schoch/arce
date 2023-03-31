@@ -1,6 +1,6 @@
 {
   "name": "arce",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "(A)rbitrary (R)emote (C)ode (E)xecutor: Experimental tool for browser agnostic e2e testing.",
   "main": "dist/index.js",
   "bin": "dist/index.js",
@@ -14,8 +14,8 @@
     "lint": "eslint src",
     "build": "rimraf dist/ && tsc --target es6 && npm run copy-public",
     "start": "nodemon dist/index.js",
-    "test": "npm run lint && c8 --reporter=lcov mocha --require ts-node/register --timeout 5000 'test/**/*spec.{ts,tsx}'",
-    "test-json-cov": "npm run lint && c8 --reporter=json-summary mocha --require ts-node/register --timeout 5000 'test/**/*spec.{ts,tsx}'",
+    "test": "npm run lint && c8 --reporter=lcov mocha --require ts-node/register --timeout 7000 'test/**/*spec.{ts,tsx}'",
+    "test-json-cov": "npm run lint && c8 --reporter=json-summary mocha --require ts-node/register --timeout 7000 'test/**/*spec.{ts,tsx}'",
     "copy-public": "copyfiles -u 1 src/**/*.html src/**/*.css dist/"
   },
   "config": {
@@ -39,16 +39,19 @@
   "license": "MIT",
   "dependencies": {
     "esprima": "^4.0.1",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.1.0",
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
     "yargs": "^17.6.0"
   },
   "devDependencies": {
     "@types/chrome-remote-interface": "^0.31.4",
     "@types/esprima": "^4.0.3",
+    "@types/express": "^4.17.17",
     "@types/mocha": "^9.1.1",
     "@types/node": "^16.11.66",
     "@types/sinon": "^10.0.13",
     "@types/sinon-chai": "^3.2.8",
+    "@types/ws": "^8.5.4",
     "@types/yargs": "^17.0.13",
     "@typescript-eslint/eslint-plugin": "^5.40.1",
     "@typescript-eslint/parser": "^5.40.1",

@@ -1,5 +1,5 @@
-import {WebSocket} from "uWebSockets.js";
 import {WaitUntilFn} from "./util/waitUntil";
+import {WebSocket} from "ws";
 
 export type ScriptContextInternal = Record<string, unknown>;
 
